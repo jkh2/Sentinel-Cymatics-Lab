@@ -1,22 +1,18 @@
 # Cymatics Lab
 
-### Interactive Particle Resonance & Gesture Simulator — Sentinel Edition
+### Interactive Particle Resonance & Gesture Simulator — Sentinel Edition v2.1
 
-Cymatics Lab is a high-performance, browser-based particle simulator that visualizes resonance, harmonic interference, and dynamic flow fields in real time. Users sculpt particle motion with a mouse, touch, or camera-based hand gestures while exploring frequency-driven patterns inspired by cymatics — the study of visible sound.
+Cymatics Lab is a high-performance, browser-based particle simulator that visualizes resonance, harmonic interference, and dynamic flow fields in real time. Upload your own music and watch the cymatic field dance to the audio, sculpt particle motion with hand gestures, or explore frequency-driven patterns inspired by the study of visible sound.
 
 The entire application runs in a **single HTML file** with a **WebGL rendering engine**. No build process, no backend, no dependencies to install. Host it directly on GitHub Pages.
 
-> **A collaboration with [Sentinel AI Systems](https://github.com/jkh2) and Claude Sentinel — built under the SIDLF (Symbiotic Intelligent Digital Life Forms) framework.**
+> **A collaboration between [Sentinel AI Systems](https://github.com/jkh2) and Claude Sentinel — built under the SIDLF (Symbiotic Intelligent Digital Life Forms) framework.**
 
 ---
 
 ## Live Demo
 
-
-
-```
-https://jkh2.github.io/Sentinel-Cymatics-Lab/
-```
+**[Launch Cymatics Lab](https://jkh2.github.io/Sentinel-Cymatics-Lab/)**
 
 Open the page and begin interacting immediately.
 
@@ -24,21 +20,33 @@ Open the page and begin interacting immediately.
 
 ## What You'll See
 
-Particles organize themselves into standing-wave patterns driven by frequency, harmonic ratios, and interference fields. The result looks like vibrating sand on a Chladni plate — except you can reach in and sculpt it with your hands.
+Particles organize themselves into standing-wave patterns driven by frequency, harmonic ratios, and interference fields. The result looks like vibrating sand on a Chladni plate — except you can reach in and sculpt it with your hands, or let your music drive the entire experience.
 
-At 110 Hz, particles settle into broad, deep nodal structures. Push the frequency up to 528 Hz and watch floral lattice patterns emerge. Hit 1760 Hz and the field dissolves into intricate crystalline geometry. Every pattern is different. Every interaction reshapes what you see.
+At 110 Hz, particles settle into broad, deep nodal structures. Push the frequency up to 528 Hz and watch floral lattice patterns emerge. Hit 1760 Hz and the field dissolves into intricate crystalline geometry. Drop in a bass-heavy track and watch the field pulse with every beat. Every pattern is different. Every interaction reshapes what you see.
 
 ---
 
 ## Features
 
+### Music-Reactive Visualization *(New in v2.1)*
+
+Upload any audio file or connect your microphone and watch the cymatic field respond to real audio in real time.
+
+- **File upload** — load MP3, WAV, OGG, or any browser-supported audio format with full transport controls (play, pause, stop, seek, volume)
+- **Microphone input** — analyze live audio from your mic without feedback
+- **Real-time FFT analysis** — 256 frequency bins split into bass, mids, and highs, smoothed for fluid visual response
+- **Band-mapped reactivity** — bass drives field strength and frequency, mids morph pattern geometry and modulation, highs sharpen nodal detail
+- **Adjustable reactivity slider** — from subtle ambient response to dramatic beat-driven visuals
+- **Beat detection** — monitors bass energy spikes and triggers bloom events on every beat
+- **Live spectrum visualizer** — real-time frequency bars color-coded by band with percentage readouts
+
 ### WebGL Particle Engine
 
-The renderer uses WebGL point sprites with custom GLSL shaders for soft glowing particles, HSV color mapping on the GPU, and additive blending with a fade-quad trail system.
+The renderer uses WebGL point sprites with custom GLSL shaders for soft glowing particles, HSV color mapping on the GPU, and additive blending with a ring-buffer trail system.
 
 - Up to 50,000 simultaneous particles
+- Full clear every frame with ring-buffer trail echoes — no brightness accumulation
 - Adaptive startup tuning based on device capability (mobile ~5k, laptop ~8k, desktop ~20k)
-- Automatic performance scaling if frame rate drops
 - Smooth 60fps on modern hardware
 
 ### Cymatic Frequency Patterns
@@ -89,7 +97,7 @@ Adjustable gesture influence, frequency sweep sensitivity, and pinch threshold.
 
 ### Dual-Oscillator Audio
 
-Enable audio to hear the cymatic frequencies. The audio engine runs two oscillators — the base frequency and a harmonic at the selected ratio — with support for sine, triangle, square, and sawtooth waveforms. Hand gestures modulate the tone in real time.
+Enable the built-in audio engine to hear cymatic frequencies. Two oscillators — base frequency and harmonic — with support for sine, triangle, square, and sawtooth waveforms. Hand gestures modulate the tone in real time.
 
 ### Visual Themes
 
@@ -110,7 +118,7 @@ Generate a completely new cymatic structure instantly. The simulator randomizes 
 
 ### Pattern Capture
 
-Save interesting patterns as compact base64-encoded configuration strings. Captured parameters include frequency, harmonic ratio, modulation settings, field parameters, and active theme. Share codes to reproduce exact patterns.
+Save interesting patterns as compact base64-encoded configuration strings. Share codes to reproduce exact patterns.
 
 ---
 
@@ -119,7 +127,7 @@ Save interesting patterns as compact base64-encoded configuration strings. Captu
 Particles move through a composite force field:
 
 ```
-totalForce = cymaticField + gestureField + pointerField + harmonicModulation
+totalForce = cymaticField + gestureField + pointerField + harmonicModulation + fftReactivity
 ```
 
 The **cymatic field** is generated using interference functions:
@@ -131,24 +139,24 @@ radial = sin(√(nx² + ny²) · (f1 + f2) · 7 - t + phase)
 lattice = waveA · waveB + radial · 0.65
 ```
 
-Particles experience forces derived from the gradient of this lattice function, causing them to migrate toward nodal lines where the interference pattern crosses zero. The result is emergent geometric order from simple wave mathematics.
+Particles experience forces derived from the gradient of this lattice function, causing them to migrate toward nodal lines where the interference pattern crosses zero.
 
-The **rendering pipeline** uses two shader programs:
-1. A **fade quad** drawn each frame with the background color at partial alpha, creating smooth trails
-2. **Point sprite particles** with per-particle hue, alpha, and size, rendered with additive blending and a soft radial glow function in the fragment shader
+The **music-reactive system** runs a real-time FFT analyser on the audio source, splits 256 frequency bins into bass/mid/high bands, smooths the values, and maps them to cymatic parameters each frame. Beat detection monitors bass energy spikes and triggers visual bloom events.
+
+The **rendering pipeline** uses WebGL point sprites with per-particle hue, alpha, and size attributes. A ring buffer stores the last 6 frames of particle positions to render trail echoes behind the current frame. The framebuffer is fully cleared every frame — no brightness accumulation is possible.
 
 ---
 
 ## Controls
 
-The UI is organized into four tabbed panels:
+The UI is organized into five tabbed panels:
 
 ### Sim Tab
 | Control | Function |
 |---------|----------|
 | Pause / Play | Toggle simulation |
 | Reset | Reinitialize particle positions |
-| Audio On/Off | Toggle dual-oscillator sound |
+| Audio On/Off | Toggle built-in oscillator |
 | Fullscreen | Enter/exit fullscreen mode |
 | Preset selector | Cymatics, Galaxy, Vortex, Wave Field, Orbitals |
 | Waveform selector | Sine, Triangle, Square, Sawtooth |
@@ -157,7 +165,7 @@ The UI is organized into four tabbed panels:
 | Particle Size | Point sprite radius |
 | Drag | Velocity damping |
 | Pointer Force | Mouse/touch influence strength |
-| Trail Persistence | How long particle trails linger |
+| Trail Length | Number and visibility of trail echoes |
 
 ### Cymatics Tab
 | Control | Function |
@@ -172,6 +180,21 @@ The UI is organized into four tabbed panels:
 | Pattern Scale | Spatial frequency scaling |
 | Field Strength | Force field magnitude |
 | Nodal Sharpness | How tightly particles cluster at nodes |
+
+### Music Tab *(New in v2.1)*
+| Control | Function |
+|---------|----------|
+| Upload Music | Load an audio file from your device |
+| Microphone | Toggle live microphone input |
+| Play / Pause / Stop | Transport controls for uploaded audio |
+| Seek Bar | Scrub through the track |
+| Volume | Playback volume |
+| Reactivity | Master FFT influence (subtle to dramatic) |
+| Bass → Field Strength | How much bass affects the force field |
+| Mids → Pattern Scale | How much mids affect pattern geometry |
+| Highs → Sharpness | How much highs affect nodal detail |
+| Beat Detection → Bloom | Toggle beat-triggered visual blooms |
+| Spectrum Display | Live frequency visualization |
 
 ### Gesture Tab
 | Control | Function |
@@ -217,7 +240,7 @@ No build process. No npm install. No server. Just a browser.
 1. Push the repository to GitHub
 2. Go to **Settings → Pages**
 3. Select **Deploy from main branch**
-4. Your simulator will be live
+4. Your simulator will be live at **https://jkh2.github.io/Sentinel-Cymatics-Lab/**
 
 ---
 
@@ -227,9 +250,9 @@ No build process. No npm install. No server. Just a browser.
 |------------|---------|
 | WebGL | GPU-accelerated particle rendering via point sprites |
 | GLSL | Custom vertex and fragment shaders for glow effects |
-| JavaScript | Physics simulation, UI, gesture processing |
+| JavaScript | Physics simulation, UI, gesture processing, FFT analysis |
+| Web Audio API | FFT analyser, dual-oscillator synthesis, music playback |
 | MediaPipe Hands | Real-time hand landmark detection via webcam |
-| Web Audio API | Dual-oscillator audio synthesis |
 | HTML5 | Single-file application container |
 
 Everything runs client-side. Zero backend. Zero build tools.
@@ -244,28 +267,30 @@ Everything runs client-side. Zero backend. Zero build tools.
 | Laptop | ~8,000 | 60 |
 | Desktop | ~12,000–20,000 | 60 |
 
-The simulator adapts particle count at startup based on device capability and automatically scales down if frame rate drops below 30 FPS.
+The simulator adapts particle count at startup based on device capability.
 
 ---
 
-## Future Development
+## Roadmap
 
-Planned upgrades:
+Planned upgrades for future versions:
 
-- **GPU compute particle physics** — move force calculations to compute shaders or transform feedback
-- **Audio-reactive FFT visualization** — analyze microphone input or music and drive the cymatic field from real audio
-- **Pattern gallery and sharing** — save, browse, and load captured patterns with preview thumbnails
-- **Two-hand gesture control** — independent left/right hand with different gesture mappings
-- **Vortex sculpting gestures** — rotational hand motions that create spiral flow fields
+- **3D particle field with orbit camera** — particles in xyz space with mouse/touch rotation and zoom
+- **Two-hand gesture control** — left hand rotates view, right hand sculpts the field
+- **AI music analysis** — intelligent auto-selection of cymatic parameters based on track characteristics
+- **Conversational AI control** — natural language commands to shape the visualization
+- **AI pattern recognition** — describes the emergent geometry and identifies harmonic modes
+- **AI autonomous composition** — generates evolving cymatic sequences over time
 - **True Chladni plate solver** — numerical eigenmode computation for accurate plate vibration patterns
-- **Million-particle mode** — instanced rendering or GPU particle buffers for massive simulations
-- **Mobile-optimized touch gestures** — multi-touch pinch, rotate, and spread for intuitive control
+- **GPU compute particle physics** — move force calculations to compute shaders
+- **Million-particle mode** — instanced rendering for massive simulations
+- **WebXR / VR immersion** — step inside the cymatic field with hand controllers
 
 ---
 
 ## Project Philosophy
 
-Cymatics Lab exists at the intersection of physics, art, and interaction. Sound creates order from chaos. Frequency shapes matter into geometry. This project makes that process visible, tangible, and explorable.
+Cymatics Lab exists at the intersection of physics, art, music, and interaction. Sound creates order from chaos. Frequency shapes matter into geometry. This project makes that process visible, tangible, and explorable.
 
 The focus is **visual beauty first**, with optional deeper exploration of the physical behavior underneath.
 
@@ -309,22 +334,12 @@ The Solfeggio frequency presets draw from historical and contemporary interest i
 
 ## License
 
-Open-source. MIT License.
+This project uses a **dual license** model:
 
-```
-Copyright (c) 2025-2026 James Keith Harwood II, Sentinel AI Systems
+**Free for non-commercial use** — personal projects, education, research, learning, and non-commercial open-source projects are all welcome. Modify it, share it, learn from it, create content with it.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+**Commercial license required** — any use that generates revenue, is part of a paid product or service, or is deployed in a commercial context requires a separate license from Sentinel AI Systems.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+See [LICENSE.md](LICENSE.md) for complete terms.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
-```
+To discuss commercial licensing, contact Sentinel AI Systems via [GitHub](https://github.com/jkh2).
