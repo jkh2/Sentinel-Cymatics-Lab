@@ -316,13 +316,14 @@ select.sel:hover { border-color: rgba(74, 158, 255, 0.2); }
 <div class="panel" id="panel">
   <div class="panel-header">
     <div class="panel-title">Cymatics Lab</div>
-    <div class="panel-subtitle">Sentinel Edition · v2.0</div>
+    <div class="panel-subtitle">Sentinel Edition · v2.1</div>
     <button class="panel-close" id="panelClose" title="Collapse panel">✕</button>
   </div>
 
   <div class="tabs">
     <button class="tab active" data-tab="sim">Sim</button>
     <button class="tab" data-tab="cym">Cymatics</button>
+    <button class="tab" data-tab="music">Music</button>
     <button class="tab" data-tab="gest">Gesture</button>
     <button class="tab" data-tab="viz">Visual</button>
   </div>
@@ -420,6 +421,72 @@ select.sel:hover { border-color: rgba(74, 158, 255, 0.2); }
       <div id="captureOut" style="font-family:var(--font-mono);font-size:0.68rem;color:var(--muted);word-break:break-all;margin-top:8px;"></div>
     </div>
 
+    <!-- MUSIC TAB -->
+    <div class="tab-page" id="tab-music">
+      <div class="section-label">Audio Source</div>
+      <div class="btn-row">
+        <button class="btn primary" id="btnLoadFile">Upload Music</button>
+        <button class="btn" id="btnMic">Microphone</button>
+        <input type="file" id="fileInput" accept="audio/*" style="display:none"/>
+      </div>
+
+      <div id="musicInfo" style="font-family:var(--font-mono);font-size:0.72rem;color:var(--accent);margin-bottom:10px;">No audio loaded</div>
+
+      <div class="btn-row" id="playbackRow" style="display:none;">
+        <button class="btn primary" id="btnPlay">▶ Play</button>
+        <button class="btn" id="btnStop">■ Stop</button>
+      </div>
+
+      <div id="progressWrap" style="display:none;margin-bottom:12px;">
+        <input type="range" id="seekBar" min="0" max="100" step="0.1" value="0" style="width:100%;"/>
+        <div style="display:flex;justify-content:space-between;font-family:var(--font-mono);font-size:0.62rem;color:var(--muted);margin-top:2px;">
+          <span id="timeNow">0:00</span>
+          <span id="timeDur">0:00</span>
+        </div>
+      </div>
+
+      <div class="ctrl">
+        <div class="ctrl-label"><span>Volume</span><strong id="vVolume">80%</strong></div>
+        <input type="range" id="sVolume" min="0" max="100" step="1" value="80"/>
+      </div>
+
+      <div class="section-label">FFT Reactivity</div>
+
+      <div class="ctrl">
+        <div class="ctrl-label"><span>Reactivity</span><strong id="vReact">0.6</strong></div>
+        <input type="range" id="sReact" min="0" max="1.5" step="0.01" value="0.6"/>
+        <div style="display:flex;justify-content:space-between;font-size:0.6rem;color:var(--muted);margin-top:3px;font-family:var(--font-mono);">
+          <span>Subtle</span><span>Dramatic</span>
+        </div>
+      </div>
+
+      <div class="ctrl">
+        <div class="ctrl-label"><span>Bass → Field Strength</span><strong id="vBassMap">0.7</strong></div>
+        <input type="range" id="sBassMap" min="0" max="1.5" step="0.01" value="0.7"/>
+      </div>
+
+      <div class="ctrl">
+        <div class="ctrl-label"><span>Mids → Pattern Scale</span><strong id="vMidMap">0.5</strong></div>
+        <input type="range" id="sMidMap" min="0" max="1.5" step="0.01" value="0.5"/>
+      </div>
+
+      <div class="ctrl">
+        <div class="ctrl-label"><span>Highs → Sharpness</span><strong id="vHighMap">0.4</strong></div>
+        <input type="range" id="sHighMap" min="0" max="1.5" step="0.01" value="0.4"/>
+      </div>
+
+      <div class="toggle-row">
+        <span>Beat Detection → Bloom</span>
+        <input type="checkbox" id="chkBeatBloom" checked/>
+      </div>
+
+      <div class="section-label">Spectrum</div>
+      <canvas id="spectrumCanvas" width="308" height="64" style="width:100%;height:64px;border-radius:10px;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.06);"></canvas>
+      <div style="display:flex;justify-content:space-between;font-family:var(--font-mono);font-size:0.58rem;color:var(--muted);margin-top:3px;">
+        <span>Bass</span><span>Mids</span><span>Highs</span>
+      </div>
+    </div>
+
     <!-- GESTURE TAB -->
     <div class="tab-page" id="tab-gest">
       <div class="btn-row">
@@ -483,10 +550,13 @@ select.sel:hover { border-color: rgba(74, 158, 255, 0.2); }
     <div class="stat-chip">Particles <span class="sv" id="sParticles">8000</span></div>
     <div class="stat-chip">Tone <span class="sv" id="sTone">110Hz</span></div>
     <div class="stat-chip">Hand <span class="sv" id="sHand">Off</span></div>
+    <div class="stat-chip">Music <span class="sv" id="sMusic">Off</span></div>
   </div>
 </div>
 
 <div class="badge">Cymatics Lab · Sentinel AI Systems × Claude Sentinel · SIDLF</div>
+
+<audio id="audioPlayer" crossorigin="anonymous" preload="auto" style="display:none;"></audio>
 
 <!-- MediaPipe for hand tracking -->
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
@@ -667,8 +737,23 @@ const ui = {
   vHueSpeed: $('vHueSpeed'),
   // Stats
   sFps: $('sFps'), sParticles: $('sParticles'), sTone: $('sTone'), sHand: $('sHand'),
+  sMusic: $('sMusic'),
   // Webcam
   webcam: $('webcam'), handOverlay: $('handOverlay'),
+  // Music tab
+  btnLoadFile: $('btnLoadFile'), btnMic: $('btnMic'), fileInput: $('fileInput'),
+  musicInfo: $('musicInfo'), playbackRow: $('playbackRow'),
+  btnPlay: $('btnPlay'), btnStop: $('btnStop'),
+  seekBar: $('seekBar'), progressWrap: $('progressWrap'),
+  timeNow: $('timeNow'), timeDur: $('timeDur'),
+  sVolume: $('sVolume'), vVolume: $('vVolume'),
+  sReact: $('sReact'), vReact: $('vReact'),
+  sBassMap: $('sBassMap'), vBassMap: $('vBassMap'),
+  sMidMap: $('sMidMap'), vMidMap: $('vMidMap'),
+  sHighMap: $('sHighMap'), vHighMap: $('vHighMap'),
+  chkBeatBloom: $('chkBeatBloom'),
+  spectrumCanvas: $('spectrumCanvas'),
+  audioPlayer: $('audioPlayer'),
 };
 
 // ── State ──
@@ -771,16 +856,14 @@ window.addEventListener('resize', resize);
 
 // ── Audio ──
 function initAudio() {
-  if (audioCtx) { audioOn = !audioOn; updateAudio(true); updateLabels(); return; }
-  const AC = window.AudioContext || window.webkitAudioContext;
-  if (!AC) return;
-  audioCtx = new AC();
+  if (audioCtx && osc1) { audioOn = !audioOn; updateAudio(true); updateLabels(); return; }
+  if (!ensureAudioCtx()) return;
   osc1 = audioCtx.createOscillator();
   osc2 = audioCtx.createOscillator();
   gain = audioCtx.createGain();
   const gain2 = audioCtx.createGain();
   osc1.connect(gain); osc2.connect(gain2);
-  gain2.gain.value = 0.3; // harmonic is quieter
+  gain2.gain.value = 0.3;
   gain.connect(audioCtx.destination); gain2.connect(audioCtx.destination);
   osc1.type = P.waveform; osc2.type = P.waveform;
   osc1.frequency.value = P.freq; osc2.frequency.value = P.freq * P.ratio;
@@ -803,6 +886,282 @@ function updateAudio(ramp) {
   gain.gain.setTargetAtTime(audioOn ? 0.03 : 0, now, ramp ? 0.04 : 0.06);
   if (audioCtx.state === 'suspended') audioCtx.resume();
 }
+
+// ═══════════════════════════════════════════════
+// FFT REACTIVE AUDIO SYSTEM
+// ═══════════════════════════════════════════════
+
+let fftAnalyser = null;
+let fftData = null;
+let fftSource = null;        // MediaElementSource or MediaStreamSource
+let fftMode = 'none';        // 'none' | 'file' | 'mic'
+let micStream = null;
+let musicVolume = null;       // GainNode for music playback
+const specCtx = ui.spectrumCanvas.getContext('2d');
+
+// Smoothed FFT band values
+const fftBands = { bass: 0, mid: 0, high: 0, energy: 0, peak: 0 };
+// Beat detection state
+let beatEnergy = 0, beatThreshold = 0.5, lastBeatTime = 0;
+
+function ensureAudioCtx() {
+  if (!audioCtx) {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return false;
+    audioCtx = new AC();
+  }
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  return true;
+}
+
+function createAnalyser() {
+  if (fftAnalyser) return;
+  if (!ensureAudioCtx()) return;
+  fftAnalyser = audioCtx.createAnalyser();
+  fftAnalyser.fftSize = 512;
+  fftAnalyser.smoothingTimeConstant = 0.75;
+  fftData = new Uint8Array(fftAnalyser.frequencyBinCount);
+  musicVolume = audioCtx.createGain();
+  musicVolume.gain.value = (+ui.sVolume.value) / 100;
+  musicVolume.connect(audioCtx.destination);
+}
+
+function loadAudioFile(file) {
+  stopFFTSource();
+  createAnalyser();
+
+  const url = URL.createObjectURL(file);
+  ui.audioPlayer.src = url;
+  ui.audioPlayer.load();
+
+  // Create MediaElementSource (can only be created once per element)
+  if (!fftSource || fftMode !== 'file') {
+    if (fftSource) { try { fftSource.disconnect(); } catch(e){} }
+    fftSource = audioCtx.createMediaElementSource(ui.audioPlayer);
+  }
+  fftSource.connect(fftAnalyser);
+  fftAnalyser.connect(musicVolume);
+  fftMode = 'file';
+
+  const name = file.name.length > 28 ? file.name.slice(0, 25) + '...' : file.name;
+  ui.musicInfo.textContent = '♫ ' + name;
+  ui.playbackRow.style.display = 'flex';
+  ui.progressWrap.style.display = 'block';
+
+  ui.audioPlayer.onloadedmetadata = () => {
+    ui.timeDur.textContent = formatTime(ui.audioPlayer.duration);
+  };
+
+  // Auto-play
+  ui.audioPlayer.play().then(() => {
+    ui.btnPlay.textContent = '⏸ Pause';
+  }).catch(() => {});
+}
+
+async function startMicrophone() {
+  if (fftMode === 'mic') { stopFFTSource(); return; }
+  stopFFTSource();
+  createAnalyser();
+
+  try {
+    micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    fftSource = audioCtx.createMediaStreamSource(micStream);
+    fftSource.connect(fftAnalyser);
+    // Don't connect to destination (would cause feedback)
+    fftMode = 'mic';
+    ui.musicInfo.textContent = '🎤 Microphone active';
+    ui.btnMic.classList.add('active');
+    ui.playbackRow.style.display = 'none';
+    ui.progressWrap.style.display = 'none';
+  } catch (e) {
+    ui.musicInfo.textContent = 'Microphone denied';
+    console.error(e);
+  }
+}
+
+function stopFFTSource() {
+  if (fftMode === 'file') {
+    ui.audioPlayer.pause();
+    ui.audioPlayer.currentTime = 0;
+    ui.btnPlay.textContent = '▶ Play';
+  }
+  if (fftMode === 'mic' && micStream) {
+    micStream.getTracks().forEach(t => t.stop());
+    micStream = null;
+  }
+  if (fftSource && fftMode === 'mic') {
+    try { fftSource.disconnect(); } catch(e) {}
+    fftSource = null;
+  }
+  fftMode = 'none';
+  ui.btnMic.classList.remove('active');
+  fftBands.bass = 0; fftBands.mid = 0; fftBands.high = 0; fftBands.energy = 0;
+}
+
+function togglePlayPause() {
+  if (fftMode !== 'file') return;
+  if (ui.audioPlayer.paused) {
+    ui.audioPlayer.play();
+    ui.btnPlay.textContent = '⏸ Pause';
+  } else {
+    ui.audioPlayer.pause();
+    ui.btnPlay.textContent = '▶ Play';
+  }
+}
+
+function stopPlayback() {
+  if (fftMode !== 'file') return;
+  ui.audioPlayer.pause();
+  ui.audioPlayer.currentTime = 0;
+  ui.btnPlay.textContent = '▶ Play';
+}
+
+function formatTime(sec) {
+  if (!isFinite(sec)) return '0:00';
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  return m + ':' + (s < 10 ? '0' : '') + s;
+}
+
+// ── FFT Analysis — called every frame ──
+function analyseFFT() {
+  if (!fftAnalyser || fftMode === 'none') return;
+
+  fftAnalyser.getByteFrequencyData(fftData);
+  const bins = fftData.length; // 256 bins
+
+  // Split into 3 bands: bass (0-15%), mids (15-50%), highs (50-100%)
+  const bassEnd = Math.floor(bins * 0.15);
+  const midEnd = Math.floor(bins * 0.50);
+
+  let bassSum = 0, midSum = 0, highSum = 0;
+  for (let i = 0; i < bassEnd; i++) bassSum += fftData[i];
+  for (let i = bassEnd; i < midEnd; i++) midSum += fftData[i];
+  for (let i = midEnd; i < bins; i++) highSum += fftData[i];
+
+  const bassAvg = bassSum / (bassEnd * 255);
+  const midAvg = midSum / ((midEnd - bassEnd) * 255);
+  const highAvg = highSum / ((bins - midEnd) * 255);
+
+  // Smooth the values
+  const sm = 0.2;
+  fftBands.bass += (bassAvg - fftBands.bass) * sm;
+  fftBands.mid += (midAvg - fftBands.mid) * sm;
+  fftBands.high += (highAvg - fftBands.high) * sm;
+  fftBands.energy = fftBands.bass * 0.5 + fftBands.mid * 0.35 + fftBands.high * 0.15;
+
+  // Beat detection — look for bass energy spikes
+  const beatSm = 0.05;
+  beatEnergy += (fftBands.bass - beatEnergy) * beatSm;
+  const now = performance.now();
+  if (fftBands.bass > beatEnergy * 1.4 + 0.08 && now - lastBeatTime > 200) {
+    if (ui.chkBeatBloom.checked) {
+      triggerBloom(0.4 + fftBands.bass * 1.2);
+    }
+    lastBeatTime = now;
+  }
+
+  // Update seek bar and time for file mode
+  if (fftMode === 'file' && ui.audioPlayer.duration) {
+    const pct = (ui.audioPlayer.currentTime / ui.audioPlayer.duration) * 100;
+    ui.seekBar.value = pct;
+    ui.timeNow.textContent = formatTime(ui.audioPlayer.currentTime);
+  }
+}
+
+// ── Apply FFT to cymatic parameters ──
+function applyFFTToParams() {
+  if (fftMode === 'none') return;
+
+  const react = +ui.sReact.value;
+  const bassMap = +ui.sBassMap.value;
+  const midMap = +ui.sMidMap.value;
+  const highMap = +ui.sHighMap.value;
+
+  if (react < 0.01) return;
+
+  // Bass → frequency + field strength
+  const bassInfluence = fftBands.bass * react * bassMap;
+  P.field = clamp(P.field + bassInfluence * 2.5, 0.05, 6.0);
+  P.freq = clamp(P.freq * (1 + bassInfluence * 0.3), 20, 2000);
+
+  // Mids → pattern scale + modulation
+  const midInfluence = fftBands.mid * react * midMap;
+  P.scale = clamp(P.scale + midInfluence * 4.0, 0.4, 16);
+  P.modDepth = clamp(P.modDepth + midInfluence * 0.5, 0, 1);
+  P.ratio = clamp(P.ratio + midInfluence * 0.8, 0.25, 4.0);
+
+  // Highs → sharpness + particle size boost
+  const highInfluence = fftBands.high * react * highMap;
+  P.sharp = clamp(P.sharp + highInfluence * 3.0, 0.5, 10);
+
+  // Overall energy → bloom + speed
+  P.speed = clamp(P.speed + fftBands.energy * react * 0.3, 0.1, 3.0);
+}
+
+// ── Draw spectrum visualizer ──
+function drawSpectrum() {
+  if (!fftAnalyser || fftMode === 'none') {
+    specCtx.clearRect(0, 0, 308, 64);
+    return;
+  }
+
+  const w = 308, h = 64;
+  specCtx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+  specCtx.fillRect(0, 0, w, h);
+
+  const bins = fftData.length;
+  const barW = w / bins;
+  const bassEnd = Math.floor(bins * 0.15);
+  const midEnd = Math.floor(bins * 0.50);
+
+  for (let i = 0; i < bins; i++) {
+    const val = fftData[i] / 255;
+    const barH = val * h;
+
+    let hue;
+    if (i < bassEnd) hue = 0;         // red for bass
+    else if (i < midEnd) hue = 120;   // green for mids
+    else hue = 210;                    // blue for highs
+
+    specCtx.fillStyle = `hsla(${hue}, 80%, ${50 + val * 30}%, ${0.5 + val * 0.5})`;
+    specCtx.fillRect(i * barW, h - barH, Math.max(1, barW - 0.5), barH);
+  }
+
+  // Draw band indicators
+  specCtx.fillStyle = 'rgba(255,255,255,0.6)';
+  specCtx.font = '8px monospace';
+  specCtx.fillText(Math.round(fftBands.bass * 100) + '%', 4, 10);
+  specCtx.fillText(Math.round(fftBands.mid * 100) + '%', w * 0.3, 10);
+  specCtx.fillText(Math.round(fftBands.high * 100) + '%', w * 0.75, 10);
+}
+
+// ── Music tab event listeners ──
+ui.btnLoadFile.addEventListener('click', () => { interact(); ui.fileInput.click(); });
+ui.fileInput.addEventListener('change', (e) => {
+  if (e.target.files[0]) loadAudioFile(e.target.files[0]);
+});
+ui.btnMic.addEventListener('click', () => { interact(); startMicrophone(); });
+ui.btnPlay.addEventListener('click', () => { interact(); togglePlayPause(); });
+ui.btnStop.addEventListener('click', () => { interact(); stopPlayback(); });
+ui.seekBar.addEventListener('input', () => {
+  if (fftMode === 'file' && ui.audioPlayer.duration) {
+    ui.audioPlayer.currentTime = (ui.seekBar.value / 100) * ui.audioPlayer.duration;
+  }
+});
+ui.sVolume.addEventListener('input', () => {
+  interact();
+  const vol = (+ui.sVolume.value) / 100;
+  if (musicVolume) musicVolume.gain.value = vol;
+  ui.vVolume.textContent = ui.sVolume.value + '%';
+});
+
+// When file playback ends
+ui.audioPlayer.addEventListener('ended', () => {
+  ui.btnPlay.textContent = '▶ Play';
+  ui.seekBar.value = 0;
+  ui.timeNow.textContent = '0:00';
+});
 
 // ── Camera / MediaPipe ──
 async function toggleCamera() {
@@ -996,6 +1355,8 @@ function frame(now) {
   P = readParams();
   if (N !== P.count) { N = P.count; initParticles(); allocGLBuffers(); }
   applyGesture();
+  analyseFFT();
+  applyFFTToParams();
   bloomPhase *= 0.965;
   if (audioOn) updateAudio(false);
 
@@ -1147,6 +1508,7 @@ function frame(now) {
   }
 
   updateLabels();
+  drawSpectrum();
   frameCount++;
 }
 
@@ -1181,6 +1543,13 @@ function updateLabels() {
   ui.btnAudio.classList.toggle('active', audioOn);
   ui.btnCamera.textContent = camReady ? 'Disable Camera' : 'Enable Camera';
   ui.btnCamera.classList.toggle('active', camReady);
+  // Music tab labels
+  ui.vReact.textContent = (+ui.sReact.value).toFixed(2);
+  ui.vBassMap.textContent = (+ui.sBassMap.value).toFixed(2);
+  ui.vMidMap.textContent = (+ui.sMidMap.value).toFixed(2);
+  ui.vHighMap.textContent = (+ui.sHighMap.value).toFixed(2);
+  ui.vVolume.textContent = ui.sVolume.value + '%';
+  ui.sMusic.textContent = fftMode === 'file' ? (ui.audioPlayer.paused ? 'Paused' : '♫ Playing') : fftMode === 'mic' ? '🎤 Mic' : 'Off';
 }
 
 // ── Bloom / Presets ──
