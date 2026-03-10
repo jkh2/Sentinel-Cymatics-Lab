@@ -68,7 +68,7 @@ Any use of the Software for commercial purposes requires a separate commercial l
 Contact Sentinel AI Systems to discuss licensing terms:
 
 - **GitHub:** https://github.com/jkh2
-- **Email:** [Contact via GitHub]
+- **Email:** [jameskharwood2@gmail.com]
 
 Commercial licenses are negotiated on a case-by-case basis. Terms may include one-time fees, royalties, revenue sharing, or other arrangements depending on the nature and scale of commercial use.
 
