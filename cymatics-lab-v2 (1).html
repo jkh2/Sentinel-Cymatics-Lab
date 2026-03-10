@@ -1,0 +1,1275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Cymatics Lab — Sentinel Edition</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+<style>
+:root {
+  --bg: #050a14;
+  --panel: rgba(8, 14, 28, 0.82);
+  --panel-border: rgba(100, 160, 255, 0.08);
+  --text: #d8e4f0;
+  --muted: #7a8ba8;
+  --accent: #4a9eff;
+  --accent2: #00e5c8;
+  --accent3: #b47aff;
+  --warm: #ff6b4a;
+  --glass: rgba(20, 40, 80, 0.35);
+  --glow-accent: rgba(74, 158, 255, 0.15);
+  --radius: 16px;
+  --font-display: 'Outfit', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  width: 100%; height: 100%; overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-display);
+  -webkit-font-smoothing: antialiased;
+}
+
+canvas#gl { position: fixed; inset: 0; width: 100%; height: 100%; display: block; z-index: 0; }
+
+/* ── HUD Panel ── */
+.panel {
+  position: fixed; top: 12px; left: 12px;
+  width: 340px; max-height: calc(100vh - 24px);
+  z-index: 10;
+  border-radius: var(--radius);
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
+  box-shadow: 0 8px 40px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.04);
+  display: flex; flex-direction: column;
+  overflow: hidden;
+  transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.3s ease;
+}
+
+.panel.collapsed { transform: translateX(-352px); opacity: 0; pointer-events: none; }
+
+.panel-toggle {
+  position: fixed; top: 12px; left: 12px; z-index: 11;
+  width: 42px; height: 42px;
+  border-radius: 12px;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  backdrop-filter: blur(16px);
+  color: var(--accent);
+  font-size: 1.2rem;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.25s ease;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+}
+.panel-toggle:hover { background: rgba(74, 158, 255, 0.12); border-color: rgba(74, 158, 255, 0.25); }
+.panel-toggle.hidden { opacity: 0; pointer-events: none; }
+
+.panel-header {
+  padding: 16px 16px 0;
+  flex-shrink: 0;
+}
+
+.panel-title {
+  font-size: 1.15rem; font-weight: 600;
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  background-clip: text;
+  letter-spacing: -0.02em;
+}
+
+.panel-subtitle {
+  font-size: 0.72rem; color: var(--muted);
+  font-family: var(--font-mono); font-weight: 300;
+  margin-top: 2px; letter-spacing: 0.03em;
+}
+
+.panel-close {
+  position: absolute; top: 14px; right: 14px;
+  background: none; border: none;
+  color: var(--muted); cursor: pointer;
+  font-size: 1.1rem; padding: 4px;
+  border-radius: 8px;
+  transition: all 0.2s;
+}
+.panel-close:hover { color: var(--text); background: rgba(255,255,255,0.06); }
+
+/* ── Tabs ── */
+.tabs {
+  display: flex; gap: 2px;
+  padding: 12px 16px 0;
+  flex-shrink: 0;
+}
+.tab {
+  flex: 1;
+  padding: 8px 4px;
+  border: none; background: transparent;
+  color: var(--muted);
+  font-family: var(--font-mono); font-size: 0.68rem; font-weight: 500;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  cursor: pointer; border-radius: 10px;
+  transition: all 0.2s;
+}
+.tab:hover { color: var(--text); background: rgba(255,255,255,0.04); }
+.tab.active {
+  color: var(--accent); background: rgba(74, 158, 255, 0.08);
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+/* ── Tab Content ── */
+.tab-body {
+  flex: 1; overflow-y: auto; overflow-x: hidden;
+  padding: 12px 16px 16px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.08) transparent;
+}
+.tab-page { display: none; }
+.tab-page.active { display: block; }
+
+/* ── Controls ── */
+.ctrl { margin-bottom: 12px; }
+.ctrl-label {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 5px;
+}
+.ctrl-label span { font-size: 0.78rem; color: var(--muted); font-weight: 400; }
+.ctrl-label strong {
+  font-family: var(--font-mono); font-size: 0.75rem;
+  color: var(--accent); font-weight: 500;
+}
+
+input[type="range"] {
+  -webkit-appearance: none; appearance: none;
+  width: 100%; height: 4px;
+  background: rgba(255,255,255,0.06);
+  border-radius: 2px; outline: none;
+  cursor: pointer;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 14px; height: 14px;
+  background: var(--accent); border-radius: 50%;
+  border: 2px solid rgba(255,255,255,0.15);
+  box-shadow: 0 0 8px rgba(74, 158, 255, 0.4);
+  transition: transform 0.15s;
+}
+input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.2); }
+input[type="range"]::-moz-range-thumb {
+  width: 14px; height: 14px;
+  background: var(--accent); border-radius: 50%;
+  border: 2px solid rgba(255,255,255,0.15);
+}
+
+.btn-row { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+
+button.btn {
+  padding: 7px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.06);
+  background: rgba(255,255,255,0.04);
+  color: var(--text);
+  font-family: var(--font-display); font-size: 0.78rem; font-weight: 500;
+  cursor: pointer; transition: all 0.2s;
+}
+button.btn:hover { background: rgba(74, 158, 255, 0.1); border-color: rgba(74, 158, 255, 0.2); }
+button.btn.primary {
+  background: linear-gradient(135deg, rgba(74, 158, 255, 0.25), rgba(0, 229, 200, 0.15));
+  border-color: rgba(74, 158, 255, 0.2);
+}
+button.btn.active {
+  background: rgba(74, 158, 255, 0.2);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+select.sel {
+  padding: 7px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.06);
+  background: rgba(255,255,255,0.04);
+  color: var(--text);
+  font-family: var(--font-display); font-size: 0.78rem;
+  cursor: pointer; appearance: none;
+  transition: all 0.2s;
+}
+select.sel:hover { border-color: rgba(74, 158, 255, 0.2); }
+
+.toggle-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 8px 10px; border-radius: 10px;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.04);
+  margin-bottom: 12px;
+}
+.toggle-row span { font-size: 0.78rem; color: var(--muted); }
+.toggle-row input[type="checkbox"] {
+  width: 16px; height: 16px;
+  accent-color: var(--accent2); cursor: pointer;
+}
+
+.section-label {
+  font-family: var(--font-mono); font-size: 0.65rem;
+  color: var(--muted); letter-spacing: 0.1em;
+  text-transform: uppercase; margin: 14px 0 8px;
+  opacity: 0.7;
+}
+
+/* ── Stats bar ── */
+.stats-bar {
+  display: flex; gap: 6px; flex-wrap: wrap;
+  padding: 10px 16px;
+  border-top: 1px solid rgba(255,255,255,0.04);
+  flex-shrink: 0;
+}
+.stat-chip {
+  padding: 4px 8px; border-radius: 8px;
+  background: rgba(255,255,255,0.03);
+  font-family: var(--font-mono); font-size: 0.65rem;
+  color: var(--muted);
+}
+.stat-chip .sv { color: var(--accent); font-weight: 500; }
+
+/* ── Gesture pills ── */
+.gesture-pills { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.g-pill {
+  padding: 5px 10px; border-radius: 99px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.05);
+  font-size: 0.72rem; color: var(--muted);
+}
+
+/* ── Webcam ── */
+.cam-wrap {
+  border-radius: 12px; overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.06);
+  background: rgba(0,0,0,0.3);
+  position: relative; aspect-ratio: 16/10;
+  margin-top: 10px;
+}
+#webcam, #handOverlay {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  object-fit: cover; display: block;
+  transform: scaleX(-1);
+}
+
+/* ── Hint overlay ── */
+.hint {
+  position: fixed; inset: 0; z-index: 5;
+  display: flex; align-items: center; justify-content: center;
+  pointer-events: none;
+  background: radial-gradient(ellipse at center, rgba(5,10,20,0.1), rgba(5,10,20,0.5));
+  opacity: 1; transition: opacity 1.2s ease;
+}
+.hint.gone { opacity: 0; }
+.hint-card {
+  padding: 24px 32px; border-radius: 20px;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  backdrop-filter: blur(16px);
+  text-align: center; max-width: min(90vw, 480px);
+  box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+}
+.hint-card h2 {
+  font-size: 1rem; font-weight: 600; margin-bottom: 6px;
+  background: linear-gradient(135deg, var(--accent), var(--accent3));
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+}
+.hint-card p { font-size: 0.82rem; color: var(--muted); line-height: 1.5; }
+
+/* ── Badge ── */
+.badge {
+  position: fixed; bottom: 12px; right: 12px; z-index: 8;
+  padding: 8px 14px; border-radius: 12px;
+  background: rgba(8,14,28,0.75);
+  border: 1px solid rgba(255,255,255,0.06);
+  backdrop-filter: blur(12px);
+  font-family: var(--font-mono); font-size: 0.68rem;
+  color: var(--muted);
+}
+
+/* ── Responsive ── */
+@media (max-width: 600px) {
+  .panel { width: calc(100vw - 24px); left: 12px; }
+  .panel.collapsed { transform: translateX(calc(-100vw + 12px)); }
+}
+</style>
+</head>
+<body>
+
+<canvas id="gl"></canvas>
+
+<div class="hint" id="hint">
+  <div class="hint-card">
+    <h2>Move your hand, mouse, or finger to sculpt the field</h2>
+    <p>Open hand steers · Pinch attracts · Tight pinch bursts<br/>Hand height sweeps frequency · Click or tap for stronger force</p>
+  </div>
+</div>
+
+<button class="panel-toggle hidden" id="panelToggle" title="Open controls">☰</button>
+
+<div class="panel" id="panel">
+  <div class="panel-header">
+    <div class="panel-title">Cymatics Lab</div>
+    <div class="panel-subtitle">Sentinel Edition · v2.0</div>
+    <button class="panel-close" id="panelClose" title="Collapse panel">✕</button>
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" data-tab="sim">Sim</button>
+    <button class="tab" data-tab="cym">Cymatics</button>
+    <button class="tab" data-tab="gest">Gesture</button>
+    <button class="tab" data-tab="viz">Visual</button>
+  </div>
+
+  <div class="tab-body">
+    <!-- SIM TAB -->
+    <div class="tab-page active" id="tab-sim">
+      <div class="btn-row">
+        <button class="btn primary" id="btnPause">Pause</button>
+        <button class="btn" id="btnReset">Reset</button>
+        <button class="btn" id="btnAudio">Audio On</button>
+        <button class="btn" id="btnFullscreen">⛶</button>
+      </div>
+
+      <div class="btn-row">
+        <select class="sel" id="selPreset">
+          <option value="cymatics">Cymatics</option>
+          <option value="galaxy">Galaxy</option>
+          <option value="vortex">Vortex</option>
+          <option value="wave">Wave Field</option>
+          <option value="orbitals">Orbitals</option>
+        </select>
+        <select class="sel" id="selWaveform">
+          <option value="sine">Sine</option>
+          <option value="triangle">Triangle</option>
+          <option value="square">Square</option>
+          <option value="sawtooth">Saw</option>
+        </select>
+      </div>
+
+      <div class="ctrl">
+        <div class="ctrl-label"><span>Particles</span><strong id="vCount">8000</strong></div>
+        <input type="range" id="sCount" min="2000" max="50000" step="1000" value="8000"/>
+      </div>
+      <div class="ctrl">
+        <div class="ctrl-label"><span>Speed</span><strong id="vSpeed">1.00</strong></div>
+        <input type="range" id="sSpeed" min="0.1" max="3.0" step="0.05" value="1.00"/>
+      </div>
+      <div class="ctrl">
+        <div class="ctrl-label"><span>Particle Size</span><strong id="vSize">1.2</strong></div>
+        <input type="range" id="sSize" min="0.5" max="6.0" step="0.1" value="1.2"/>
+      </div>
+      <div class="ctrl">
+        <div class="ctrl-label"><span>Drag</span><strong id="vDrag">0.978</strong></div>
+        <input type="range" id="sDrag" min="0.94" max="0.999" step="0.001" value="0.978"/>
+      </div>
+      <div class="ctrl">
+        <div class="ctrl-label"><span>Pointer Force</span><strong id="vForce">0.6</strong></div>
+        <input type="range" id="sForce" min="0" max="3" step="0.05" value="0.6"/>
+      </div>
+      <div class="ctrl">
+        <div class="ctrl-label"><span>Trail Persistence</span><strong id="vTrail">0.75</strong></div>
+        <input type="range" id="sTrail" min="0.3" max="0.98" step="0.005" value="0.75"/>
+      </div>
+    </div>
+
+    <!-- CYMATICS TAB -->
+    <div class="tab-page" id="tab-cym">
+      <div class="btn-row">
+        <button class="btn primary" id="btnNextFreq">Next Frequency</button>
+        <button class="btn" id="btnBloom">Random Bloom</button>
+        <button class="btn" id="btnCapture">Capture</button>
+      </div>
+      <div class="ctrl">
+        <div class="ctrl-label"><span>Base Frequency</span><strong id="vFreq">110 Hz</strong></div>
+        <input type="range" id="sFreq" min="20" max="2000" step="1" value="110"/>
+      </div>
+      <div class="ctrl">
+        <div class="ctrl-label"><span>Harmonic Ratio</span><strong id="vRatio">1.50×</strong></div>
+        <input type="range" id="sRatio" min="0.25" max="4.0" step="0.01" value="1.50"/>
+      </div>
+      <div class="ctrl">
+        <div class="ctrl-label"><span>Modulation Rate</span><strong id="vModRate">0.35 Hz</strong></div>
+        <input type="range" id="sModRate" min="0" max="12" step="0.01" value="0.35"/>
+      </div>
+      <div class="ctrl">
+        <div class="ctrl-label"><span>Modulation Depth</span><strong id="vModDepth">0.45</strong></div>
+        <input type="range" id="sModDepth" min="0" max="1" step="0.01" value="0.45"/>
+      </div>
+      <div class="ctrl">
+        <div class="ctrl-label"><span>Pattern Scale</span><strong id="vScale">3.50</strong></div>
+        <input type="range" id="sScale" min="0.4" max="12" step="0.05" value="3.50"/>
+      </div>
+      <div class="ctrl">
+        <div class="ctrl-label"><span>Field Strength</span><strong id="vField">1.40</strong></div>
+        <input type="range" id="sField" min="0.05" max="4" step="0.05" value="1.40"/>
+      </div>
+      <div class="ctrl">
+        <div class="ctrl-label"><span>Nodal Sharpness</span><strong id="vSharp">2.80</strong></div>
+        <input type="range" id="sSharp" min="0.5" max="8" step="0.05" value="2.80"/>
+      </div>
+      <div id="captureOut" style="font-family:var(--font-mono);font-size:0.68rem;color:var(--muted);word-break:break-all;margin-top:8px;"></div>
+    </div>
+
+    <!-- GESTURE TAB -->
+    <div class="tab-page" id="tab-gest">
+      <div class="btn-row">
+        <button class="btn primary" id="btnCamera">Enable Camera</button>
+      </div>
+      <div class="gesture-pills">
+        <div class="g-pill">✋ Open → steer</div>
+        <div class="g-pill">🤏 Pinch → attract</div>
+        <div class="g-pill">✊ Tight → burst</div>
+        <div class="g-pill">↕ Height → freq</div>
+        <div class="g-pill">↔ Size → field</div>
+      </div>
+      <div class="ctrl">
+        <div class="ctrl-label"><span>Gesture Influence</span><strong id="vGForce">1.10</strong></div>
+        <input type="range" id="sGForce" min="0" max="3" step="0.05" value="1.10"/>
+      </div>
+      <div class="ctrl">
+        <div class="ctrl-label"><span>Frequency Sweep</span><strong id="vGFreq">0.85</strong></div>
+        <input type="range" id="sGFreq" min="0" max="2" step="0.05" value="0.85"/>
+      </div>
+      <div class="ctrl">
+        <div class="ctrl-label"><span>Pinch Threshold</span><strong id="vPinch">0.075</strong></div>
+        <input type="range" id="sPinch" min="0.02" max="0.16" step="0.005" value="0.075"/>
+      </div>
+      <div class="cam-wrap">
+        <video id="webcam" playsinline muted></video>
+        <canvas id="handOverlay"></canvas>
+      </div>
+    </div>
+
+    <!-- VISUAL TAB -->
+    <div class="tab-page" id="tab-viz">
+      <div class="btn-row">
+        <button class="btn" id="btnTheme">Cycle Theme</button>
+      </div>
+      <div class="toggle-row">
+        <span>Additive Glow</span>
+        <input type="checkbox" id="chkGlow" checked/>
+      </div>
+      <div class="toggle-row">
+        <span>Bloom Effect</span>
+        <input type="checkbox" id="chkBloom" checked/>
+      </div>
+      <div class="ctrl">
+        <div class="ctrl-label"><span>Bloom Intensity</span><strong id="vBloomInt">0.6</strong></div>
+        <input type="range" id="sBloomInt" min="0" max="1.5" step="0.05" value="0.6"/>
+      </div>
+      <div class="ctrl">
+        <div class="ctrl-label"><span>Color Saturation</span><strong id="vSat">0.85</strong></div>
+        <input type="range" id="sSat" min="0" max="1" step="0.01" value="0.85"/>
+      </div>
+      <div class="ctrl">
+        <div class="ctrl-label"><span>Hue Rotation Speed</span><strong id="vHueSpeed">0.3</strong></div>
+        <input type="range" id="sHueSpeed" min="0" max="2" step="0.05" value="0.3"/>
+      </div>
+    </div>
+  </div>
+
+  <div class="stats-bar">
+    <div class="stat-chip">FPS <span class="sv" id="sFps">--</span></div>
+    <div class="stat-chip">Particles <span class="sv" id="sParticles">8000</span></div>
+    <div class="stat-chip">Tone <span class="sv" id="sTone">110Hz</span></div>
+    <div class="stat-chip">Hand <span class="sv" id="sHand">Off</span></div>
+  </div>
+</div>
+
+<div class="badge">Cymatics Lab · Sentinel AI Systems × Claude Sentinel · SIDLF</div>
+
+<!-- MediaPipe for hand tracking -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+// CYMATICS LAB v2 — Sentinel Edition
+// Sentinel AI Systems × Claude Sentinel — SIDLF Partnership
+// WebGL Particle Resonance & Gesture Simulator
+// ═══════════════════════════════════════════════════════════════
+
+'use strict';
+
+const TAU = Math.PI * 2;
+const canvas = document.getElementById('gl');
+const gl = canvas.getContext('webgl', { alpha: false, antialias: false, preserveDrawingBuffer: true });
+
+if (!gl) {
+  document.body.innerHTML = '<div style="color:#fff;padding:40px;font-family:sans-serif">WebGL not supported. Please use a modern browser.</div>';
+  throw new Error('No WebGL');
+}
+
+// ── WebGL Shaders ──
+
+// Particle vertex shader
+const PART_VS = `
+attribute vec2 a_pos;
+attribute float a_hue;
+attribute float a_alpha;
+attribute float a_size;
+uniform vec2 u_res;
+varying float v_hue;
+varying float v_alpha;
+void main() {
+  vec2 clip = (a_pos / u_res) * 2.0 - 1.0;
+  clip.y = -clip.y;
+  gl_Position = vec4(clip, 0.0, 1.0);
+  gl_PointSize = a_size;
+  v_hue = a_hue;
+  v_alpha = a_alpha;
+}`;
+
+// Particle fragment shader — soft glowing point sprites
+const PART_FS = `
+precision mediump float;
+varying float v_hue;
+varying float v_alpha;
+uniform float u_sat;
+
+vec3 hsv2rgb(float h, float s, float v) {
+  vec3 c = vec3(h, s, v);
+  vec3 p = abs(fract(c.xxx + vec3(1.0, 2.0/3.0, 1.0/3.0)) * 6.0 - 3.0);
+  return c.z * mix(vec3(1.0), clamp(p - 1.0, 0.0, 1.0), c.y);
+}
+
+void main() {
+  float d = length(gl_PointCoord - 0.5) * 2.0;
+  if (d > 1.0) discard;
+  float soft = 1.0 - d * d;
+  float core = exp(-d * 3.0) * 0.4 + soft * 0.25;
+  vec3 col = hsv2rgb(v_hue, u_sat, 0.7 + core * 0.3);
+  gl_FragColor = vec4(col * core, v_alpha * core);
+}`;
+
+// Fade quad shaders — draws a fullscreen rect that dims the previous frame for trails
+const FADE_VS = `
+attribute vec2 a_pos;
+void main() { gl_Position = vec4(a_pos, 0.0, 1.0); }`;
+
+const FADE_FS = `
+precision mediump float;
+uniform vec4 u_color;
+void main() { gl_FragColor = u_color; }`;
+
+function compileShader(src, type) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+    console.error(gl.getShaderInfoLog(s));
+    return null;
+  }
+  return s;
+}
+
+function buildProgram(vsSrc, fsSrc) {
+  const v = compileShader(vsSrc, gl.VERTEX_SHADER);
+  const f = compileShader(fsSrc, gl.FRAGMENT_SHADER);
+  const p = gl.createProgram();
+  gl.attachShader(p, v); gl.attachShader(p, f);
+  gl.linkProgram(p);
+  return p;
+}
+
+// Particle program
+const prog = buildProgram(PART_VS, PART_FS);
+const aPos = gl.getAttribLocation(prog, 'a_pos');
+const aHue = gl.getAttribLocation(prog, 'a_hue');
+const aAlpha = gl.getAttribLocation(prog, 'a_alpha');
+const aSize = gl.getAttribLocation(prog, 'a_size');
+const uRes = gl.getUniformLocation(prog, 'u_res');
+const uSat = gl.getUniformLocation(prog, 'u_sat');
+
+// Fade program
+const fadeProg = buildProgram(FADE_VS, FADE_FS);
+const aFadePos = gl.getAttribLocation(fadeProg, 'a_pos');
+const uFadeColor = gl.getUniformLocation(fadeProg, 'u_color');
+
+// Fullscreen quad for fade
+const quadBuf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+
+// Particle attribute buffers
+const posBuf = gl.createBuffer();
+const hueBuf = gl.createBuffer();
+const alphaBuf = gl.createBuffer();
+const sizeBuf = gl.createBuffer();
+
+gl.enable(gl.BLEND);
+
+// ── Cymatic Presets ──
+const FREQ_PRESETS = [
+  { f: 110,  label: '110 Hz · Deep Fundamental' },
+  { f: 174,  label: '174 Hz · Foundation' },
+  { f: 220,  label: '220 Hz · Octave Bloom' },
+  { f: 285,  label: '285 Hz · Quantum Field' },
+  { f: 396,  label: '396 Hz · Liberation' },
+  { f: 417,  label: '417 Hz · Resonance Shift' },
+  { f: 432,  label: '432 Hz · Harmonic Mandala' },
+  { f: 528,  label: '528 Hz · Floral Lattice' },
+  { f: 639,  label: '639 Hz · Connection' },
+  { f: 741,  label: '741 Hz · Awakening' },
+  { f: 852,  label: '852 Hz · Intuition' },
+  { f: 880,  label: '880 Hz · High Plate' },
+  { f: 963,  label: '963 Hz · Crown' },
+  { f: 1200, label: '1200 Hz · Crystal Lattice' },
+  { f: 1760, label: '1760 Hz · Ultra Geometry' },
+];
+
+const THEMES = [
+  { name: 'Midnight',  bg: [0.02, 0.035, 0.08],  hueBase: 210, hueRange: 80 },
+  { name: 'Aurora',    bg: [0.01, 0.04, 0.06],    hueBase: 140, hueRange: 120 },
+  { name: 'Ember',     bg: [0.06, 0.02, 0.03],    hueBase: 15,  hueRange: 60 },
+  { name: 'Void',      bg: [0.01, 0.01, 0.02],    hueBase: 270, hueRange: 90 },
+  { name: 'Solar',     bg: [0.04, 0.03, 0.01],    hueBase: 40,  hueRange: 50 },
+  { name: 'Deep Sea',  bg: [0.0, 0.03, 0.06],     hueBase: 190, hueRange: 40 },
+];
+
+// ── UI References ──
+const $ = id => document.getElementById(id);
+
+const ui = {
+  panel: $('panel'), panelToggle: $('panelToggle'), panelClose: $('panelClose'),
+  hint: $('hint'),
+  btnPause: $('btnPause'), btnReset: $('btnReset'), btnAudio: $('btnAudio'),
+  btnFullscreen: $('btnFullscreen'), btnNextFreq: $('btnNextFreq'),
+  btnBloom: $('btnBloom'), btnCapture: $('btnCapture'), btnCamera: $('btnCamera'),
+  btnTheme: $('btnTheme'),
+  selPreset: $('selPreset'), selWaveform: $('selWaveform'),
+  sCount: $('sCount'), sSpeed: $('sSpeed'), sSize: $('sSize'),
+  sDrag: $('sDrag'), sForce: $('sForce'), sTrail: $('sTrail'),
+  sFreq: $('sFreq'), sRatio: $('sRatio'), sModRate: $('sModRate'),
+  sModDepth: $('sModDepth'), sScale: $('sScale'), sField: $('sField'),
+  sSharp: $('sSharp'), sGForce: $('sGForce'), sGFreq: $('sGFreq'),
+  sPinch: $('sPinch'), chkGlow: $('chkGlow'), chkBloom: $('chkBloom'),
+  sBloomInt: $('sBloomInt'), sSat: $('sSat'), sHueSpeed: $('sHueSpeed'),
+  captureOut: $('captureOut'),
+  // Value displays
+  vCount: $('vCount'), vSpeed: $('vSpeed'), vSize: $('vSize'),
+  vDrag: $('vDrag'), vForce: $('vForce'), vTrail: $('vTrail'),
+  vFreq: $('vFreq'), vRatio: $('vRatio'), vModRate: $('vModRate'),
+  vModDepth: $('vModDepth'), vScale: $('vScale'), vField: $('vField'),
+  vSharp: $('vSharp'), vGForce: $('vGForce'), vGFreq: $('vGFreq'),
+  vPinch: $('vPinch'), vBloomInt: $('vBloomInt'), vSat: $('vSat'),
+  vHueSpeed: $('vHueSpeed'),
+  // Stats
+  sFps: $('sFps'), sParticles: $('sParticles'), sTone: $('sTone'), sHand: $('sHand'),
+  // Webcam
+  webcam: $('webcam'), handOverlay: $('handOverlay'),
+};
+
+// ── State ──
+let W = 0, H = 0;
+let running = true, hasInteracted = false;
+let themeIdx = 0, freqPresetIdx = 0;
+let bloomPhase = 0, bloomHue = 0;
+let lastT = performance.now(), fpsT = 0, fpsN = 0;
+
+const pointer = { x: 0, y: 0, active: false, mode: 1, burst: 0, source: 'mouse' };
+const hand = { active: false, gesture: 'none', sx: 0.5, sy: 0.5, sSize: 0.15, sPinch: 1 };
+
+// Particle arrays (SoA)
+let N = 8000;
+let px, py, pvx, pvy, phue, plife, pseed;
+
+// Audio
+let audioCtx = null, osc1 = null, osc2 = null, gain = null, audioOn = false;
+
+// Camera / MediaPipe
+let mpHands = null, mpCam = null, camReady = false, camStream = null;
+const handCtx = ui.handOverlay.getContext('2d');
+
+// ── Helpers ──
+function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
+function lerp(a, b, t) { return a + (b - a) * t; }
+
+function rng(seed) {
+  let s = seed >>> 0;
+  return () => { s += 0x6D2B79F5; let r = Math.imul(s ^ (s >>> 15), s | 1); r ^= r + Math.imul(r ^ (r >>> 7), r | 61); return ((r ^ (r >>> 14)) >>> 0) / 4294967296; };
+}
+
+function readParams() {
+  return {
+    count: +ui.sCount.value, speed: +ui.sSpeed.value, size: +ui.sSize.value,
+    drag: +ui.sDrag.value, force: +ui.sForce.value, trail: +ui.sTrail.value,
+    preset: ui.selPreset.value, waveform: ui.selWaveform.value,
+    freq: +ui.sFreq.value, ratio: +ui.sRatio.value,
+    modRate: +ui.sModRate.value, modDepth: +ui.sModDepth.value,
+    scale: +ui.sScale.value, field: +ui.sField.value, sharp: +ui.sSharp.value,
+    gForce: +ui.sGForce.value, gFreq: +ui.sGFreq.value, pinch: +ui.sPinch.value,
+    glow: ui.chkGlow.checked, bloom: ui.chkBloom.checked,
+    bloomInt: +ui.sBloomInt.value, sat: +ui.sSat.value, hueSpeed: +ui.sHueSpeed.value,
+  };
+}
+
+let P = readParams();
+
+// ── Particle Init ──
+function initParticles() {
+  P = readParams();
+  N = P.count;
+  px = new Float32Array(N); py = new Float32Array(N);
+  pvx = new Float32Array(N); pvy = new Float32Array(N);
+  phue = new Float32Array(N); plife = new Float32Array(N);
+  pseed = new Float32Array(N);
+
+  const r = rng(42 + N * 7);
+  const cx = W * 0.5, cy = H * 0.5;
+  const baseR = Math.min(W, H) * 0.42;
+
+  for (let i = 0; i < N; i++) {
+    const a = r() * TAU;
+    const rad = Math.sqrt(r()) * baseR;
+    px[i] = cx + Math.cos(a) * rad;
+    py[i] = cy + Math.sin(a) * rad;
+    phue[i] = i / N;
+    plife[i] = r() * TAU;
+    pseed[i] = r() * 1000;
+
+    if (P.preset === 'galaxy') {
+      pvx[i] = -Math.sin(a) * (0.2 + r() * 0.5);
+      pvy[i] = Math.cos(a) * (0.2 + r() * 0.5);
+    } else if (P.preset === 'vortex') {
+      pvx[i] = Math.cos(a) * 0.15; pvy[i] = Math.sin(a) * 0.15;
+    } else if (P.preset === 'orbitals') {
+      pvx[i] = -Math.sin(a * 2) * (0.25 + r() * 0.35);
+      pvy[i] = Math.cos(a * 3) * (0.25 + r() * 0.35);
+    } else if (P.preset === 'cymatics') {
+      pvx[i] = (r() - 0.5) * 0.05; pvy[i] = (r() - 0.5) * 0.05;
+    } else {
+      pvx[i] = (r() - 0.5) * 0.6; pvy[i] = (r() - 0.5) * 0.6;
+    }
+    pvx[i] *= 0.2; pvy[i] *= 0.2;
+  }
+}
+
+// ── Resize ──
+function resize() {
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = W; canvas.height = H;
+  gl.viewport(0, 0, W, H);
+  gl.useProgram(prog);
+  gl.uniform2f(uRes, W, H);
+  gl.clearColor(0.02, 0.035, 0.08, 1);
+  gl.clear(gl.COLOR_BUFFER_BIT);
+  initParticles();
+}
+window.addEventListener('resize', resize);
+
+// ── Audio ──
+function initAudio() {
+  if (audioCtx) { audioOn = !audioOn; updateAudio(true); updateLabels(); return; }
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return;
+  audioCtx = new AC();
+  osc1 = audioCtx.createOscillator();
+  osc2 = audioCtx.createOscillator();
+  gain = audioCtx.createGain();
+  const gain2 = audioCtx.createGain();
+  osc1.connect(gain); osc2.connect(gain2);
+  gain2.gain.value = 0.3; // harmonic is quieter
+  gain.connect(audioCtx.destination); gain2.connect(audioCtx.destination);
+  osc1.type = P.waveform; osc2.type = P.waveform;
+  osc1.frequency.value = P.freq; osc2.frequency.value = P.freq * P.ratio;
+  gain.gain.value = 0; gain2.gain.value = 0;
+  osc1.start(); osc2.start();
+  audioOn = true;
+  updateAudio(true);
+  updateLabels();
+}
+
+function updateAudio(ramp) {
+  if (!audioCtx || !osc1) return;
+  const now = audioCtx.currentTime;
+  osc1.type = P.waveform; osc2.type = P.waveform;
+  osc1.frequency.cancelScheduledValues(now);
+  osc1.frequency.setTargetAtTime(P.freq, now, 0.02);
+  osc2.frequency.cancelScheduledValues(now);
+  osc2.frequency.setTargetAtTime(P.freq * P.ratio, now, 0.02);
+  gain.gain.cancelScheduledValues(now);
+  gain.gain.setTargetAtTime(audioOn ? 0.03 : 0, now, ramp ? 0.04 : 0.06);
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+}
+
+// ── Camera / MediaPipe ──
+async function toggleCamera() {
+  if (camReady) { stopCamera(); return; }
+  if (!navigator.mediaDevices || !window.Hands || !window.Camera) {
+    ui.sHand.textContent = 'N/A'; return;
+  }
+  try {
+    camStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }, audio: false
+    });
+    ui.webcam.srcObject = camStream;
+    await ui.webcam.play();
+
+    mpHands = new Hands({ locateFile: f => 'https://cdn.jsdelivr.net/npm/@mediapipe/hands/' + f });
+    mpHands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.6, minTrackingConfidence: 0.55 });
+    mpHands.onResults(onHandResults);
+
+    mpCam = new Camera(ui.webcam, {
+      onFrame: async () => { if (mpHands) await mpHands.send({ image: ui.webcam }); },
+      width: 640, height: 480
+    });
+    await mpCam.start();
+    camReady = true; updateLabels();
+  } catch (e) {
+    console.error(e); ui.sHand.textContent = 'Denied'; stopCamera();
+  }
+}
+
+function stopCamera() {
+  if (mpCam && mpCam.stop) mpCam.stop(); mpCam = null;
+  if (camStream) { camStream.getTracks().forEach(t => t.stop()); } camStream = null;
+  ui.webcam.srcObject = null; hand.active = false; hand.gesture = 'none';
+  camReady = false; handCtx.clearRect(0, 0, 640, 480); updateLabels();
+}
+
+function dist2(a, b) { return Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2); }
+
+function onHandResults(res) {
+  const ow = ui.handOverlay.clientWidth || 320;
+  const oh = ui.handOverlay.clientHeight || 200;
+  ui.handOverlay.width = ow; ui.handOverlay.height = oh;
+  handCtx.clearRect(0, 0, ow, oh);
+
+  if (!res.multiHandLandmarks || !res.multiHandLandmarks.length) {
+    hand.active = false; hand.gesture = 'none'; return;
+  }
+
+  const lm = res.multiHandLandmarks[0];
+  if (window.drawConnectors && window.HAND_CONNECTIONS)
+    drawConnectors(handCtx, lm, HAND_CONNECTIONS, { color: '#4a9eff', lineWidth: 2 });
+  if (window.drawLandmarks)
+    drawLandmarks(handCtx, lm, { color: '#b47aff', lineWidth: 1, radius: 3 });
+
+  const w = lm[0], it = lm[8], tt = lm[4], mt = lm[12], pt = lm[20], im = lm[5], pm = lm[17];
+  const cx = (w.x + im.x + pm.x + mt.x) * 0.25;
+  const cy = (w.y + im.y + pm.y + mt.y) * 0.25;
+  const hs = Math.max(0.02, dist2(im, pm) + dist2(w, mt) * 0.35);
+  const pinch = dist2(it, tt);
+  const sm = 0.18;
+  hand.sx += (cx - hand.sx) * sm; hand.sy += (cy - hand.sy) * sm;
+  hand.sSize += (hs - hand.sSize) * sm; hand.sPinch += (pinch - hand.sPinch) * sm;
+  hand.active = true;
+}
+
+// ── Gesture → Pointer ──
+function applyGesture() {
+  if (!camReady || !hand.active) { pointer.burst *= 0.92; return; }
+  pointer.source = 'hand'; pointer.active = true;
+  pointer.x = hand.sx * W; pointer.y = hand.sy * H;
+
+  const closed = hand.sPinch < P.pinch;
+  const near = hand.sPinch < P.pinch * 1.5;
+
+  if (closed) {
+    pointer.mode = -1; pointer.burst = Math.min(1, pointer.burst + 0.08);
+    hand.gesture = 'Burst';
+  } else if (near) {
+    pointer.mode = 1.8; pointer.burst *= 0.9; hand.gesture = 'Attract';
+  } else {
+    pointer.mode = 0.9; pointer.burst *= 0.92; hand.gesture = 'Steer';
+  }
+
+  const gf = (1 - hand.sy) * 900 * P.gFreq;
+  const nf = clamp(P.freq * (1 - 0.05 * P.gFreq) + gf, 20, 2000);
+  ui.sFreq.value = String(Math.round(nf)); P.freq = nf;
+  P.field = clamp(+ui.sField.value * 0.5 + (0.65 + hand.sSize * 5.5 * P.gForce) * 0.5, 0.05, 4);
+
+  if (audioOn) updateAudio(false);
+}
+
+// ── Physics ──
+function cymaticsForce(i, t, cx, cy) {
+  const dx = px[i] - cx, dy = py[i] - cy;
+  const nx = dx / Math.max(1, W * 0.5), ny = dy / Math.max(1, H * 0.5);
+  const mod = 1 + P.modDepth * Math.sin(TAU * P.modRate * t + pseed[i] * 0.002);
+  const f1 = P.freq * 0.01 * P.scale * mod;
+  const f2 = P.freq * P.ratio * 0.01 * P.scale * (1 - P.modDepth * 0.35 * Math.cos(TAU * P.modRate * 0.5 * t));
+  const p = pseed[i] * 0.0007;
+
+  const wA = Math.sin(nx * f1 * TAU + t * 0.9 + p);
+  const wB = Math.sin(ny * f2 * TAU - t * 0.7 + p * 1.3);
+  const rad = Math.sin(Math.sqrt(nx * nx + ny * ny) * (f1 + f2) * 7 - t * 1.2 + p * 0.7);
+  const lattice = wA * wB + rad * 0.65;
+  const node = 1 - Math.min(1, Math.abs(lattice));
+  const nb = Math.pow(clamp(node, 0, 1), P.sharp);
+
+  let ax = -f1 * TAU * Math.cos(nx * f1 * TAU + t * 0.9 + p) * wB * P.field * 0.0035;
+  let ay = -f2 * TAU * Math.cos(ny * f2 * TAU - t * 0.7 + p * 1.3) * wA * P.field * 0.0035;
+  ax += -nx * nb * P.field * 0.42;
+  ay += -ny * nb * P.field * 0.42;
+
+  if (pointer.active) {
+    const ppx = pointer.x - px[i], ppy = pointer.y - py[i];
+    const pr2 = ppx * ppx + ppy * ppy + 120;
+    const pf = P.force * P.gForce * 160 / pr2;
+    ax += ppx * pf * pointer.mode;
+    ay += ppy * pf * pointer.mode;
+    if (pointer.burst > 0.01) { ax -= ppx * pf * pointer.burst * 2.4; ay -= ppy * pf * pointer.burst * 2.4; }
+  }
+
+  return { ax, ay, node: nb };
+}
+
+function otherForce(i, t, cx, cy) {
+  const dx = px[i] - cx, dy = py[i] - cy;
+  const r = Math.sqrt(dx * dx + dy * dy) + 1e-4;
+  const nx = dx / r, ny = dy / r;
+  const ang = Math.atan2(dy, dx);
+  let ax = 0, ay = 0;
+
+  if (P.preset === 'galaxy') {
+    const sw = 18 / (r + 40);
+    ax = -ny * sw - nx * 0.015; ay = nx * sw - ny * 0.015;
+  } else if (P.preset === 'vortex') {
+    const pull = -22 / (r + 30), spin = 12 / (r + 25);
+    ax = nx * pull - ny * spin; ay = ny * pull + nx * spin;
+  } else if (P.preset === 'orbitals') {
+    const w = Math.sin(ang * 3 + t * 0.7 + pseed[i] * 0.01);
+    const b = Math.cos(r * 0.015 - t * 1.4 + pseed[i] * 0.02);
+    ax = -ny * (0.22 + w * 0.14) + nx * b * 0.08;
+    ay = nx * (0.22 + w * 0.14) + ny * b * 0.08;
+  } else {
+    const wf = Math.sin(dx * 0.012 + t * 1.7 + pseed[i]) + Math.cos(dy * 0.01 - t * 1.2 + pseed[i]);
+    ax = Math.cos(ang + wf) * 0.16; ay = Math.sin(ang - wf) * 0.16;
+  }
+
+  if (pointer.active) {
+    const ppx = pointer.x - px[i], ppy = pointer.y - py[i];
+    const pr2 = ppx * ppx + ppy * ppy + 80;
+    const pf = P.force * (pointer.source === 'hand' ? P.gForce : 1) * 140 / pr2;
+    ax += ppx * pf * pointer.mode; ay += ppy * pf * pointer.mode;
+    if (pointer.burst > 0.01) { ax -= ppx * pf * pointer.burst * 1.8; ay -= ppy * pf * pointer.burst * 1.8; }
+  }
+
+  return { ax, ay, node: 0 };
+}
+
+// ── GL Upload Buffers ──
+let glPos, glHue, glAlpha, glSize;
+
+function allocGLBuffers() {
+  glPos = new Float32Array(N * 2);
+  glHue = new Float32Array(N);
+  glAlpha = new Float32Array(N);
+  glSize = new Float32Array(N);
+}
+
+// ── Main Loop ──
+function frame(now) {
+  requestAnimationFrame(frame);
+  const rawDt = (now - lastT) / 1000;
+  lastT = now;
+  if (!running) return;
+
+  P = readParams();
+  if (N !== P.count) { N = P.count; initParticles(); allocGLBuffers(); }
+  applyGesture();
+  bloomPhase *= 0.965;
+  if (audioOn) updateAudio(false);
+
+  const dt = Math.min(0.033, rawDt) * P.speed;
+  const cx = W * 0.5, cy = H * 0.5;
+  const t = now * 0.001;
+  const theme = THEMES[themeIdx];
+  const fadeIn = 1; // could animate if desired
+
+  // ── Trail: draw a fade quad over the previous frame ──
+  const bg = theme.bg;
+  const fadeAmt = 1 - P.trail; // lower trail = more fade per frame
+
+  // Switch to standard blending for the fade quad
+  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+  gl.useProgram(fadeProg);
+  gl.uniform4f(uFadeColor, bg[0], bg[1], bg[2], fadeAmt);
+  gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
+  gl.enableVertexAttribArray(aFadePos);
+  gl.vertexAttribPointer(aFadePos, 2, gl.FLOAT, false, 0, 0);
+  // Disable particle attribs during fade draw
+  gl.disableVertexAttribArray(aPos);
+  gl.disableVertexAttribArray(aHue);
+  gl.disableVertexAttribArray(aAlpha);
+  gl.disableVertexAttribArray(aSize);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+  // Switch back to particle program
+  gl.useProgram(prog);
+  gl.uniform2f(uRes, W, H);
+
+  // Physics + build buffers
+  const isCym = P.preset === 'cymatics';
+  const bloomGlow = 1 + bloomPhase * 0.6;
+
+  for (let i = 0; i < N; i++) {
+    const f = isCym ? cymaticsForce(i, t, cx, cy) : otherForce(i, t, cx, cy);
+    pvx[i] = (pvx[i] + f.ax * dt * 60) * P.drag;
+    pvy[i] = (pvy[i] + f.ay * dt * 60) * P.drag;
+    px[i] += pvx[i]; py[i] += pvy[i];
+
+    // Wrap
+    if (px[i] < 0) px[i] += W; else if (px[i] > W) px[i] -= W;
+    if (py[i] < 0) py[i] += H; else if (py[i] > H) py[i] -= H;
+
+    plife[i] += dt * 0.25;
+
+    // Hue
+    let h;
+    if (isCym) {
+      h = (theme.hueBase + bloomHue + P.freq * 0.08 + f.node * 120 + Math.sin(t + pseed[i] * 0.002) * 25) / 360;
+      h += P.hueSpeed * t * 0.01;
+    } else {
+      h = (phue[i] + t * P.hueSpeed * 0.08 + theme.hueBase / 360);
+    }
+    glHue[i] = h % 1;
+
+    // Alpha — kept low to prevent additive saturation
+    let a;
+    if (isCym) {
+      a = (0.04 + f.node * 0.35) * fadeIn;
+    } else {
+      a = (0.08 + 0.15 * (0.5 + 0.5 * Math.sin(plife[i] * 4 + pseed[i]))) * fadeIn;
+    }
+    glAlpha[i] = a;
+
+    // Size
+    let sz;
+    if (isCym) {
+      sz = Math.max(0.4, P.size * (0.4 + f.node * 1.2) * bloomGlow);
+    } else {
+      sz = Math.max(0.4, P.size * (0.8 + 0.2 * Math.sin(plife[i] * 3)) * (1 + bloomPhase * 0.15));
+    }
+    glSize[i] = sz;
+
+    glPos[i * 2] = px[i];
+    glPos[i * 2 + 1] = py[i];
+  }
+
+  if (pointer.source === 'hand') pointer.burst *= 0.92;
+
+  // Blending mode
+  if (P.glow) {
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE); // additive
+  } else {
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); // standard
+  }
+
+  gl.uniform1f(uSat, P.sat);
+
+  // Upload & draw
+  gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
+  gl.bufferData(gl.ARRAY_BUFFER, glPos, gl.DYNAMIC_DRAW);
+  gl.enableVertexAttribArray(aPos);
+  gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+
+  gl.bindBuffer(gl.ARRAY_BUFFER, hueBuf);
+  gl.bufferData(gl.ARRAY_BUFFER, glHue, gl.DYNAMIC_DRAW);
+  gl.enableVertexAttribArray(aHue);
+  gl.vertexAttribPointer(aHue, 1, gl.FLOAT, false, 0, 0);
+
+  gl.bindBuffer(gl.ARRAY_BUFFER, alphaBuf);
+  gl.bufferData(gl.ARRAY_BUFFER, glAlpha, gl.DYNAMIC_DRAW);
+  gl.enableVertexAttribArray(aAlpha);
+  gl.vertexAttribPointer(aAlpha, 1, gl.FLOAT, false, 0, 0);
+
+  gl.bindBuffer(gl.ARRAY_BUFFER, sizeBuf);
+  gl.bufferData(gl.ARRAY_BUFFER, glSize, gl.DYNAMIC_DRAW);
+  gl.enableVertexAttribArray(aSize);
+  gl.vertexAttribPointer(aSize, 1, gl.FLOAT, false, 0, 0);
+
+  gl.drawArrays(gl.POINTS, 0, N);
+
+  // FPS
+  fpsT += rawDt; fpsN++;
+  if (fpsT >= 0.4) {
+    ui.sFps.textContent = String(Math.round(fpsN / fpsT));
+    fpsT = 0; fpsN = 0;
+  }
+
+  updateLabels();
+}
+
+// ── Labels ──
+function updateLabels() {
+  ui.vCount.textContent = ui.sCount.value;
+  ui.vSpeed.textContent = (+ui.sSpeed.value).toFixed(2);
+  ui.vSize.textContent = (+ui.sSize.value).toFixed(1);
+  ui.vDrag.textContent = (+ui.sDrag.value).toFixed(3);
+  ui.vForce.textContent = (+ui.sForce.value).toFixed(2);
+  ui.vTrail.textContent = (+ui.sTrail.value).toFixed(3);
+  ui.vFreq.textContent = Math.round(+ui.sFreq.value) + ' Hz';
+  ui.vRatio.textContent = (+ui.sRatio.value).toFixed(2) + '×';
+  ui.vModRate.textContent = (+ui.sModRate.value).toFixed(2) + ' Hz';
+  ui.vModDepth.textContent = (+ui.sModDepth.value).toFixed(2);
+  ui.vScale.textContent = (+ui.sScale.value).toFixed(2);
+  ui.vField.textContent = (+ui.sField.value).toFixed(2);
+  ui.vSharp.textContent = (+ui.sSharp.value).toFixed(2);
+  ui.vGForce.textContent = (+ui.sGForce.value).toFixed(2);
+  ui.vGFreq.textContent = (+ui.sGFreq.value).toFixed(2);
+  ui.vPinch.textContent = (+ui.sPinch.value).toFixed(3);
+  ui.vBloomInt.textContent = (+ui.sBloomInt.value).toFixed(2);
+  ui.vSat.textContent = (+ui.sSat.value).toFixed(2);
+  ui.vHueSpeed.textContent = (+ui.sHueSpeed.value).toFixed(1);
+  ui.sParticles.textContent = ui.sCount.value;
+  ui.sTone.textContent = Math.round(+ui.sFreq.value) + 'Hz';
+  ui.sHand.textContent = camReady ? (hand.active ? hand.gesture : 'Tracking') : 'Off';
+  ui.btnPause.textContent = running ? 'Pause' : 'Play';
+  ui.btnPause.classList.toggle('active', !running);
+  ui.btnAudio.textContent = audioOn ? 'Audio Off' : 'Audio On';
+  ui.btnAudio.classList.toggle('active', audioOn);
+  ui.btnCamera.textContent = camReady ? 'Disable Camera' : 'Enable Camera';
+  ui.btnCamera.classList.toggle('active', camReady);
+}
+
+// ── Bloom / Presets ──
+function triggerBloom(str) { bloomPhase = Math.max(bloomPhase, str); bloomHue = (bloomHue + 47) % 360; }
+
+function nextFreqPreset() {
+  freqPresetIdx = (freqPresetIdx + 1) % FREQ_PRESETS.length;
+  const p = FREQ_PRESETS[freqPresetIdx];
+  ui.sFreq.value = String(p.f); P.freq = p.f;
+  triggerBloom(1); if (audioOn) updateAudio(false);
+}
+
+function randomBloom() {
+  const fp = FREQ_PRESETS[Math.floor(Math.random() * FREQ_PRESETS.length)];
+  ui.sFreq.value = String(fp.f);
+  ui.sRatio.value = (0.6 + Math.random() * 2.6).toFixed(2);
+  ui.sModRate.value = (Math.random() * 2.4).toFixed(2);
+  ui.sModDepth.value = (0.18 + Math.random() * 0.58).toFixed(2);
+  ui.sScale.value = (1.4 + Math.random() * 6.8).toFixed(2);
+  ui.sField.value = (0.8 + Math.random() * 2.2).toFixed(2);
+  ui.sSharp.value = (1.2 + Math.random() * 4.8).toFixed(2);
+  P = readParams(); triggerBloom(1.2); initParticles();
+}
+
+function capturePattern() {
+  const snap = {
+    preset: ui.selPreset.value, waveform: ui.selWaveform.value,
+    freq: +ui.sFreq.value, ratio: +ui.sRatio.value,
+    modRate: +ui.sModRate.value, modDepth: +ui.sModDepth.value,
+    scale: +ui.sScale.value, field: +ui.sField.value, sharp: +ui.sSharp.value,
+    theme: THEMES[themeIdx].name
+  };
+  ui.captureOut.textContent = btoa(JSON.stringify(snap));
+}
+
+function cycleTheme() {
+  themeIdx = (themeIdx + 1) % THEMES.length;
+  triggerBloom(0.75);
+}
+
+function toggleFS() {
+  if (!document.fullscreenElement) document.documentElement.requestFullscreen?.();
+  else document.exitFullscreen?.();
+}
+
+// ── Interaction ──
+function interact() {
+  hasInteracted = true;
+  if (ui.hint && !ui.hint.classList.contains('gone')) {
+    ui.hint.classList.add('gone');
+    setTimeout(() => { ui.hint.style.display = 'none'; }, 1200);
+  }
+}
+
+// ── Tab System ──
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-page').forEach(p => p.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+  });
+});
+
+// ── Panel Toggle ──
+ui.panelClose.addEventListener('click', () => {
+  ui.panel.classList.add('collapsed');
+  ui.panelToggle.classList.remove('hidden');
+});
+ui.panelToggle.addEventListener('click', () => {
+  ui.panel.classList.remove('collapsed');
+  ui.panelToggle.classList.add('hidden');
+});
+
+// ── Button Events ──
+ui.btnPause.addEventListener('click', () => { interact(); running = !running; updateLabels(); });
+ui.btnReset.addEventListener('click', () => { interact(); initParticles(); });
+ui.btnAudio.addEventListener('click', () => { interact(); initAudio(); });
+ui.btnFullscreen.addEventListener('click', () => { interact(); toggleFS(); });
+ui.btnNextFreq.addEventListener('click', () => { interact(); nextFreqPreset(); });
+ui.btnBloom.addEventListener('click', () => { interact(); randomBloom(); });
+ui.btnCapture.addEventListener('click', () => { interact(); capturePattern(); });
+ui.btnCamera.addEventListener('click', () => { interact(); toggleCamera(); });
+ui.btnTheme.addEventListener('click', () => { interact(); cycleTheme(); });
+
+// Slider interactions
+document.querySelectorAll('input[type="range"]').forEach(s => {
+  s.addEventListener('input', () => { interact(); P = readParams(); updateLabels(); });
+});
+ui.sCount.addEventListener('change', () => { initParticles(); allocGLBuffers(); });
+ui.selPreset.addEventListener('change', () => { interact(); initParticles(); });
+ui.selWaveform.addEventListener('change', () => { interact(); if (audioOn) updateAudio(false); });
+ui.chkGlow.addEventListener('change', () => interact());
+ui.chkBloom.addEventListener('change', () => interact());
+
+// ── Pointer Events ──
+window.addEventListener('mousemove', e => {
+  interact(); if (camReady) return;
+  pointer.source = 'mouse'; pointer.x = e.clientX; pointer.y = e.clientY;
+  pointer.active = true; pointer.mode = 1;
+});
+window.addEventListener('mousedown', e => {
+  interact(); if (camReady) return;
+  pointer.source = 'mouse'; pointer.x = e.clientX; pointer.y = e.clientY;
+  pointer.active = true; pointer.mode = 1.6;
+});
+window.addEventListener('mouseup', () => { if (!camReady) pointer.mode = 1; });
+window.addEventListener('mouseleave', () => { if (!camReady) pointer.active = false; });
+
+window.addEventListener('touchstart', e => {
+  interact(); if (camReady) return;
+  const t = e.touches[0]; if (!t) return;
+  pointer.source = 'mouse'; pointer.x = t.clientX; pointer.y = t.clientY;
+  pointer.active = true; pointer.mode = 1.6;
+}, { passive: true });
+window.addEventListener('touchmove', e => {
+  if (camReady) return; const t = e.touches[0]; if (!t) return;
+  pointer.x = t.clientX; pointer.y = t.clientY; pointer.active = true;
+}, { passive: true });
+window.addEventListener('touchend', () => { if (!camReady) { pointer.active = false; pointer.mode = 1; } }, { passive: true });
+
+// ── Adaptive Startup ──
+function adaptiveCount() {
+  const short = Math.min(window.innerWidth, window.innerHeight);
+  const touch = window.matchMedia?.('(pointer: coarse)')?.matches;
+  if (touch) return short < 700 ? 5000 : 8000;
+  if (window.innerWidth > 1500) return 20000;
+  if (window.innerWidth > 1100) return 12000;
+  return 8000;
+}
+
+// ── Boot ──
+const startCount = adaptiveCount();
+ui.sCount.value = String(startCount);
+
+resize();
+allocGLBuffers();
+requestAnimationFrame(frame);
+
+</script>
+</body>
+</html>
