@@ -362,8 +362,8 @@ select.sel:hover { border-color: rgba(74, 158, 255, 0.2); }
         <input type="range" id="sSpeed" min="0.1" max="3.0" step="0.05" value="1.00"/>
       </div>
       <div class="ctrl">
-        <div class="ctrl-label"><span>Particle Size</span><strong id="vSize">1.8</strong></div>
-        <input type="range" id="sSize" min="0.5" max="6.0" step="0.1" value="1.8"/>
+        <div class="ctrl-label"><span>Particle Size</span><strong id="vSize">2.0</strong></div>
+        <input type="range" id="sSize" min="0.5" max="8.0" step="0.1" value="2.0"/>
       </div>
       <div class="ctrl">
         <div class="ctrl-label"><span>Drag</span><strong id="vDrag">0.978</strong></div>
@@ -374,8 +374,11 @@ select.sel:hover { border-color: rgba(74, 158, 255, 0.2); }
         <input type="range" id="sForce" min="0" max="3" step="0.05" value="0.6"/>
       </div>
       <div class="ctrl">
-        <div class="ctrl-label"><span>Trail Persistence</span><strong id="vTrail">0.92</strong></div>
-        <input type="range" id="sTrail" min="0.7" max="0.995" step="0.005" value="0.92"/>
+        <div class="ctrl-label"><span>Trail Length</span><strong id="vTrail">Medium</strong></div>
+        <input type="range" id="sTrail" min="0" max="0.98" step="0.01" value="0.5"/>
+        <div style="display:flex;justify-content:space-between;font-size:0.65rem;color:var(--muted);margin-top:3px;font-family:var(--font-mono);">
+          <span>No trails</span><span>Long trails</span>
+        </div>
       </div>
     </div>
 
@@ -501,7 +504,7 @@ select.sel:hover { border-color: rgba(74, 158, 255, 0.2); }
 
 const TAU = Math.PI * 2;
 const canvas = document.getElementById('gl');
-const gl = canvas.getContext('webgl', { alpha: false, antialias: false, preserveDrawingBuffer: true });
+const gl = canvas.getContext('webgl', { alpha: false, antialias: false, preserveDrawingBuffer: false });
 
 if (!gl) {
   document.body.innerHTML = '<div style="color:#fff;padding:40px;font-family:sans-serif">WebGL not supported. Please use a modern browser.</div>';
@@ -544,10 +547,10 @@ vec3 hsv2rgb(float h, float s, float v) {
 void main() {
   float d = length(gl_PointCoord - 0.5) * 2.0;
   if (d > 1.0) discard;
-  float soft = 1.0 - d * d;
-  float glow = exp(-d * 2.5) * 0.6 + soft * 0.4;
-  vec3 col = hsv2rgb(v_hue, u_sat, 0.85 + glow * 0.15);
-  gl_FragColor = vec4(col * glow, v_alpha * glow);
+  float soft = 1.0 - d * d * d;
+  float core = exp(-d * 1.8) * 0.7 + soft * 0.3;
+  vec3 col = hsv2rgb(v_hue, u_sat, 0.8 + core * 0.2);
+  gl_FragColor = vec4(col * core, v_alpha * (core * 0.8 + 0.2));
 }`;
 
 // Fade quad shaders — draws a fullscreen rect that dims the previous frame for trails
@@ -961,14 +964,29 @@ function otherForce(i, t, cx, cy) {
 // ── GL Upload Buffers ──
 let glPos, glHue, glAlpha, glSize;
 
+// Trail ring buffer — stores past positions for trail rendering
+const TRAIL_LEN = 6; // number of trail echoes
+let trailRing = []; // array of { pos: Float32Array } for past frames
+let trailIdx = 0;
+
 function allocGLBuffers() {
-  glPos = new Float32Array(N * 2);
-  glHue = new Float32Array(N);
-  glAlpha = new Float32Array(N);
-  glSize = new Float32Array(N);
+  // Main particles + trail particles
+  const totalPts = N * (1 + TRAIL_LEN);
+  glPos = new Float32Array(totalPts * 2);
+  glHue = new Float32Array(totalPts);
+  glAlpha = new Float32Array(totalPts);
+  glSize = new Float32Array(totalPts);
+  // Init trail ring
+  trailRing = [];
+  for (let t = 0; t < TRAIL_LEN; t++) {
+    trailRing.push(new Float32Array(N * 2));
+  }
+  trailIdx = 0;
 }
 
 // ── Main Loop ──
+let frameCount = 0;
+
 function frame(now) {
   requestAnimationFrame(frame);
   const rawDt = (now - lastT) / 1000;
@@ -985,34 +1003,61 @@ function frame(now) {
   const cx = W * 0.5, cy = H * 0.5;
   const t = now * 0.001;
   const theme = THEMES[themeIdx];
-  const fadeIn = 1; // could animate if desired
 
-  // ── Trail: draw a fade quad over the previous frame ──
-  const bg = theme.bg;
-  const fadeAmt = 1 - P.trail; // lower trail = more fade per frame
+  // ── Full clear every frame — no accumulation possible ──
+  gl.clearColor(theme.bg[0], theme.bg[1], theme.bg[2], 1.0);
+  gl.clear(gl.COLOR_BUFFER_BIT);
 
-  // Switch to standard blending for the fade quad
-  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-  gl.useProgram(fadeProg);
-  gl.uniform4f(uFadeColor, bg[0], bg[1], bg[2], fadeAmt);
-  gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
-  gl.enableVertexAttribArray(aFadePos);
-  gl.vertexAttribPointer(aFadePos, 2, gl.FLOAT, false, 0, 0);
-  // Disable particle attribs during fade draw
-  gl.disableVertexAttribArray(aPos);
-  gl.disableVertexAttribArray(aHue);
-  gl.disableVertexAttribArray(aAlpha);
-  gl.disableVertexAttribArray(aSize);
-  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  // ── Store current positions into trail ring before physics update ──
+  const ring = trailRing[trailIdx % TRAIL_LEN];
+  for (let i = 0; i < N; i++) {
+    ring[i * 2] = px[i];
+    ring[i * 2 + 1] = py[i];
+  }
+  trailIdx++;
 
-  // Switch back to particle program
-  gl.useProgram(prog);
-  gl.uniform2f(uRes, W, H);
-
-  // Physics + build buffers
+  // ── Physics ──
   const isCym = P.preset === 'cymatics';
-  const bloomGlow = 1 + bloomPhase * 1.5;
+  const bloomGlow = 1 + bloomPhase * 0.6;
 
+  // How much trail to show (0 = no trail, 1 = full trail)
+  const trailStrength = P.trail;
+
+  // Build trail particles first (drawn behind current particles)
+  let writeIdx = 0;
+
+  if (trailStrength > 0.05) {
+    for (let echo = 0; echo < TRAIL_LEN; echo++) {
+      // Oldest trail echo first, newest last
+      const age = TRAIL_LEN - echo; // age: TRAIL_LEN..1
+      const ageFrac = age / TRAIL_LEN; // 1.0 = oldest, ~0 = newest
+      const trailAlpha = trailStrength * (1 - ageFrac) * 0.6;
+      const trailSize = Math.max(0.5, P.size * (0.4 + 0.5 * (1 - ageFrac)));
+      const ringSlot = (trailIdx - 1 - echo + TRAIL_LEN * 100) % TRAIL_LEN;
+      const trailData = trailRing[ringSlot];
+
+      if (trailAlpha < 0.005) continue;
+
+      for (let i = 0; i < N; i++) {
+        glPos[writeIdx * 2] = trailData[i * 2];
+        glPos[writeIdx * 2 + 1] = trailData[i * 2 + 1];
+        glAlpha[writeIdx] = trailAlpha;
+        glSize[writeIdx] = trailSize;
+        // Hue — same as main particle but slightly shifted
+        let h;
+        if (isCym) {
+          h = (theme.hueBase + bloomHue + P.freq * 0.08 + Math.sin(t + pseed[i] * 0.002) * 25) / 360;
+          h += P.hueSpeed * t * 0.01;
+        } else {
+          h = (phue[i] + t * P.hueSpeed * 0.08 + theme.hueBase / 360);
+        }
+        glHue[writeIdx] = (h + ageFrac * 0.02) % 1;
+        writeIdx++;
+      }
+    }
+  }
+
+  // ── Current frame particles ──
   for (let i = 0; i < N; i++) {
     const f = isCym ? cymaticsForce(i, t, cx, cy) : otherForce(i, t, cx, cy);
     pvx[i] = (pvx[i] + f.ax * dt * 60) * P.drag;
@@ -1033,28 +1078,29 @@ function frame(now) {
     } else {
       h = (phue[i] + t * P.hueSpeed * 0.08 + theme.hueBase / 360);
     }
-    glHue[i] = h % 1;
+    glHue[writeIdx] = h % 1;
 
     // Alpha
     let a;
     if (isCym) {
-      a = (0.12 + f.node * 0.88) * fadeIn;
+      a = 0.25 + f.node * 0.75;
     } else {
-      a = (0.3 + 0.35 * (0.5 + 0.5 * Math.sin(plife[i] * 4 + pseed[i]))) * fadeIn;
+      a = 0.35 + 0.35 * (0.5 + 0.5 * Math.sin(plife[i] * 4 + pseed[i]));
     }
-    glAlpha[i] = a;
+    glAlpha[writeIdx] = a;
 
     // Size
     let sz;
     if (isCym) {
-      sz = Math.max(0.5, P.size * (0.5 + f.node * 2.5) * bloomGlow);
+      sz = Math.max(0.8, P.size * (0.6 + f.node * 2.2) * bloomGlow);
     } else {
-      sz = Math.max(0.5, P.size * (1 + 0.3 * Math.sin(plife[i] * 3)) * (1 + bloomPhase * 0.2));
+      sz = Math.max(0.8, P.size * (0.9 + 0.3 * Math.sin(plife[i] * 3)) * (1 + bloomPhase * 0.15));
     }
-    glSize[i] = sz;
+    glSize[writeIdx] = sz;
 
-    glPos[i * 2] = px[i];
-    glPos[i * 2 + 1] = py[i];
+    glPos[writeIdx * 2] = px[i];
+    glPos[writeIdx * 2 + 1] = py[i];
+    writeIdx++;
   }
 
   if (pointer.source === 'hand') pointer.burst *= 0.92;
@@ -1066,30 +1112,32 @@ function frame(now) {
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); // standard
   }
 
+  gl.useProgram(prog);
+  gl.uniform2f(uRes, W, H);
   gl.uniform1f(uSat, P.sat);
 
-  // Upload & draw
+  // Upload & draw all particles (trails + current)
   gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
-  gl.bufferData(gl.ARRAY_BUFFER, glPos, gl.DYNAMIC_DRAW);
+  gl.bufferData(gl.ARRAY_BUFFER, glPos.subarray(0, writeIdx * 2), gl.DYNAMIC_DRAW);
   gl.enableVertexAttribArray(aPos);
   gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
 
   gl.bindBuffer(gl.ARRAY_BUFFER, hueBuf);
-  gl.bufferData(gl.ARRAY_BUFFER, glHue, gl.DYNAMIC_DRAW);
+  gl.bufferData(gl.ARRAY_BUFFER, glHue.subarray(0, writeIdx), gl.DYNAMIC_DRAW);
   gl.enableVertexAttribArray(aHue);
   gl.vertexAttribPointer(aHue, 1, gl.FLOAT, false, 0, 0);
 
   gl.bindBuffer(gl.ARRAY_BUFFER, alphaBuf);
-  gl.bufferData(gl.ARRAY_BUFFER, glAlpha, gl.DYNAMIC_DRAW);
+  gl.bufferData(gl.ARRAY_BUFFER, glAlpha.subarray(0, writeIdx), gl.DYNAMIC_DRAW);
   gl.enableVertexAttribArray(aAlpha);
   gl.vertexAttribPointer(aAlpha, 1, gl.FLOAT, false, 0, 0);
 
   gl.bindBuffer(gl.ARRAY_BUFFER, sizeBuf);
-  gl.bufferData(gl.ARRAY_BUFFER, glSize, gl.DYNAMIC_DRAW);
+  gl.bufferData(gl.ARRAY_BUFFER, glSize.subarray(0, writeIdx), gl.DYNAMIC_DRAW);
   gl.enableVertexAttribArray(aSize);
   gl.vertexAttribPointer(aSize, 1, gl.FLOAT, false, 0, 0);
 
-  gl.drawArrays(gl.POINTS, 0, N);
+  gl.drawArrays(gl.POINTS, 0, writeIdx);
 
   // FPS
   fpsT += rawDt; fpsN++;
@@ -1099,6 +1147,7 @@ function frame(now) {
   }
 
   updateLabels();
+  frameCount++;
 }
 
 // ── Labels ──
@@ -1108,7 +1157,8 @@ function updateLabels() {
   ui.vSize.textContent = (+ui.sSize.value).toFixed(1);
   ui.vDrag.textContent = (+ui.sDrag.value).toFixed(3);
   ui.vForce.textContent = (+ui.sForce.value).toFixed(2);
-  ui.vTrail.textContent = (+ui.sTrail.value).toFixed(3);
+  const trailVal = +ui.sTrail.value;
+  ui.vTrail.textContent = trailVal < 0.05 ? 'Off' : trailVal < 0.3 ? 'Short' : trailVal < 0.6 ? 'Medium' : trailVal < 0.85 ? 'Long' : 'Very long';
   ui.vFreq.textContent = Math.round(+ui.sFreq.value) + ' Hz';
   ui.vRatio.textContent = (+ui.sRatio.value).toFixed(2) + '×';
   ui.vModRate.textContent = (+ui.sModRate.value).toFixed(2) + ' Hz';
@@ -1152,7 +1202,7 @@ function randomBloom() {
   ui.sScale.value = (1.4 + Math.random() * 6.8).toFixed(2);
   ui.sField.value = (0.8 + Math.random() * 2.2).toFixed(2);
   ui.sSharp.value = (1.2 + Math.random() * 4.8).toFixed(2);
-  P = readParams(); triggerBloom(1.2); initParticles();
+  P = readParams(); triggerBloom(1.2); clearScreen(); initParticles();
 }
 
 function capturePattern() {
@@ -1166,9 +1216,16 @@ function capturePattern() {
   ui.captureOut.textContent = btoa(JSON.stringify(snap));
 }
 
+function clearScreen() {
+  const bg = THEMES[themeIdx].bg;
+  gl.clearColor(bg[0], bg[1], bg[2], 1);
+  gl.clear(gl.COLOR_BUFFER_BIT);
+}
+
 function cycleTheme() {
   themeIdx = (themeIdx + 1) % THEMES.length;
   triggerBloom(0.75);
+  clearScreen();
 }
 
 function toggleFS() {
@@ -1207,7 +1264,9 @@ ui.panelToggle.addEventListener('click', () => {
 
 // ── Button Events ──
 ui.btnPause.addEventListener('click', () => { interact(); running = !running; updateLabels(); });
-ui.btnReset.addEventListener('click', () => { interact(); initParticles(); });
+ui.btnReset.addEventListener('click', () => {
+  interact(); clearScreen(); initParticles();
+});
 ui.btnAudio.addEventListener('click', () => { interact(); initAudio(); });
 ui.btnFullscreen.addEventListener('click', () => { interact(); toggleFS(); });
 ui.btnNextFreq.addEventListener('click', () => { interact(); nextFreqPreset(); });
@@ -1221,7 +1280,7 @@ document.querySelectorAll('input[type="range"]').forEach(s => {
   s.addEventListener('input', () => { interact(); P = readParams(); updateLabels(); });
 });
 ui.sCount.addEventListener('change', () => { initParticles(); allocGLBuffers(); });
-ui.selPreset.addEventListener('change', () => { interact(); initParticles(); });
+ui.selPreset.addEventListener('change', () => { interact(); clearScreen(); initParticles(); });
 ui.selWaveform.addEventListener('change', () => { interact(); if (audioOn) updateAudio(false); });
 ui.chkGlow.addEventListener('change', () => interact());
 ui.chkBloom.addEventListener('change', () => interact());
