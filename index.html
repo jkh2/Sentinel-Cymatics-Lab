@@ -295,6 +295,41 @@ select.sel:hover { border-color: rgba(74, 158, 255, 0.2); }
 
 /* ── Responsive ── */
 @media (max-width: 600px) {
+
+/* ── Recording indicator ── */
+.rec-dot {
+  position: fixed; top: 16px; right: 16px; z-index: 20;
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 14px; border-radius: 12px;
+  background: rgba(8, 14, 28, 0.8);
+  border: 1px solid rgba(255, 60, 60, 0.3);
+  backdrop-filter: blur(12px);
+  font-family: var(--font-mono); font-size: 0.72rem;
+  color: #ff4444;
+  pointer-events: none;
+  opacity: 0; transition: opacity 0.3s ease;
+}
+.rec-dot.active { opacity: 1; }
+.rec-dot::before {
+  content: '';
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  background: #ff3333;
+  animation: recPulse 1s ease-in-out infinite;
+}
+@keyframes recPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.8); }
+}
+
+button.btn.recording {
+  background: rgba(255, 50, 50, 0.25) !important;
+  border-color: rgba(255, 50, 50, 0.4) !important;
+  color: #ff4444 !important;
+}
+
+/* ── Responsive ── */
+@media (max-width: 600px) {
   .panel { width: calc(100vw - 24px); left: 12px; }
   .panel.collapsed { transform: translateX(calc(-100vw + 12px)); }
 }
@@ -336,6 +371,7 @@ select.sel:hover { border-color: rgba(74, 158, 255, 0.2); }
         <button class="btn" id="btnReset">Reset</button>
         <button class="btn" id="btnAudio">Audio On</button>
         <button class="btn" id="btnFullscreen">⛶</button>
+        <button class="btn" id="btnRecord">⏺ Record</button>
       </div>
 
       <div class="btn-row">
@@ -554,6 +590,8 @@ select.sel:hover { border-color: rgba(74, 158, 255, 0.2); }
   </div>
 </div>
 
+<div class="rec-dot" id="recDot">REC <span id="recTime">0:00</span></div>
+
 <div class="badge">Cymatics Lab · Sentinel AI Systems × Claude Sentinel · SIDLF</div>
 
 <audio id="audioPlayer" crossorigin="anonymous" preload="auto" style="display:none;"></audio>
@@ -715,7 +753,8 @@ const ui = {
   panel: $('panel'), panelToggle: $('panelToggle'), panelClose: $('panelClose'),
   hint: $('hint'),
   btnPause: $('btnPause'), btnReset: $('btnReset'), btnAudio: $('btnAudio'),
-  btnFullscreen: $('btnFullscreen'), btnNextFreq: $('btnNextFreq'),
+  btnFullscreen: $('btnFullscreen'), btnRecord: $('btnRecord'),
+  btnNextFreq: $('btnNextFreq'),
   btnBloom: $('btnBloom'), btnCapture: $('btnCapture'), btnCamera: $('btnCamera'),
   btnTheme: $('btnTheme'),
   selPreset: $('selPreset'), selWaveform: $('selWaveform'),
@@ -754,6 +793,7 @@ const ui = {
   chkBeatBloom: $('chkBeatBloom'),
   spectrumCanvas: $('spectrumCanvas'),
   audioPlayer: $('audioPlayer'),
+  recDot: $('recDot'), recTime: $('recTime'),
 };
 
 // ── State ──
@@ -1162,6 +1202,127 @@ ui.audioPlayer.addEventListener('ended', () => {
   ui.seekBar.value = 0;
   ui.timeNow.textContent = '0:00';
 });
+
+// ═══════════════════════════════════════════════
+// SESSION RECORDING SYSTEM
+// ═══════════════════════════════════════════════
+
+let mediaRecorder = null;
+let recordedChunks = [];
+let isRecording = false;
+let recStartTime = 0;
+let recTimerInterval = null;
+
+function startRecording() {
+  if (isRecording) { stopRecording(); return; }
+
+  // Capture canvas stream at 30fps
+  const canvasStream = canvas.captureStream(30);
+
+  // Try to merge audio if available
+  let combinedStream;
+  if (audioCtx && (audioOn || fftMode === 'file')) {
+    try {
+      const audioDest = audioCtx.createMediaStreamDestination();
+      // Connect whatever audio is playing to the recording destination
+      if (fftMode === 'file' && fftAnalyser) {
+        fftAnalyser.connect(audioDest);
+      }
+      if (audioOn && gain) {
+        gain.connect(audioDest);
+      }
+      // Merge video + audio tracks
+      const tracks = [
+        ...canvasStream.getVideoTracks(),
+        ...audioDest.stream.getAudioTracks()
+      ];
+      combinedStream = new MediaStream(tracks);
+    } catch (e) {
+      console.warn('Could not capture audio for recording:', e);
+      combinedStream = canvasStream;
+    }
+  } else {
+    combinedStream = canvasStream;
+  }
+
+  // Choose best supported format
+  const mimeTypes = [
+    'video/webm;codecs=vp9,opus',
+    'video/webm;codecs=vp8,opus',
+    'video/webm;codecs=vp9',
+    'video/webm;codecs=vp8',
+    'video/webm',
+  ];
+  let mimeType = '';
+  for (const mt of mimeTypes) {
+    if (MediaRecorder.isTypeSupported(mt)) { mimeType = mt; break; }
+  }
+
+  if (!mimeType) {
+    ui.musicInfo.textContent = 'Recording not supported in this browser';
+    return;
+  }
+
+  try {
+    recordedChunks = [];
+    mediaRecorder = new MediaRecorder(combinedStream, {
+      mimeType,
+      videoBitsPerSecond: 5000000 // 5 Mbps for good quality
+    });
+
+    mediaRecorder.ondataavailable = (e) => {
+      if (e.data && e.data.size > 0) recordedChunks.push(e.data);
+    };
+
+    mediaRecorder.onstop = () => {
+      const blob = new Blob(recordedChunks, { type: mimeType });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const timestamp = new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-');
+      a.href = url;
+      a.download = 'cymatics-lab-' + timestamp + '.webm';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+    };
+
+    mediaRecorder.start(1000); // collect data every second
+    isRecording = true;
+    recStartTime = performance.now();
+
+    // Start timer display
+    ui.recDot.classList.add('active');
+    ui.btnRecord.textContent = '⏹ Stop';
+    ui.btnRecord.classList.add('recording');
+    recTimerInterval = setInterval(updateRecTimer, 500);
+
+  } catch (e) {
+    console.error('Recording failed:', e);
+  }
+}
+
+function stopRecording() {
+  if (!isRecording || !mediaRecorder) return;
+
+  mediaRecorder.stop();
+  isRecording = false;
+
+  ui.recDot.classList.remove('active');
+  ui.btnRecord.textContent = '⏺ Record';
+  ui.btnRecord.classList.remove('recording');
+  if (recTimerInterval) { clearInterval(recTimerInterval); recTimerInterval = null; }
+}
+
+function updateRecTimer() {
+  if (!isRecording) return;
+  const elapsed = (performance.now() - recStartTime) / 1000;
+  const m = Math.floor(elapsed / 60);
+  const s = Math.floor(elapsed % 60);
+  ui.recTime.textContent = m + ':' + (s < 10 ? '0' : '') + s;
+}
+
+ui.btnRecord.addEventListener('click', () => { interact(); startRecording(); });
 
 // ── Camera / MediaPipe ──
 async function toggleCamera() {
