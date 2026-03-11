@@ -351,7 +351,7 @@ button.btn.recording {
 <div class="panel" id="panel">
   <div class="panel-header">
     <div class="panel-title">Cymatics Lab</div>
-    <div class="panel-subtitle">Sentinel Edition · v2.1</div>
+    <div class="panel-subtitle">Sentinel Edition · v2.2</div>
     <button class="panel-close" id="panelClose" title="Collapse panel">✕</button>
   </div>
 
@@ -377,6 +377,9 @@ button.btn.recording {
       <div class="btn-row">
         <select class="sel" id="selPreset">
           <option value="cymatics">Cymatics</option>
+          <option value="chladni">Chladni Plate</option>
+          <option value="radial">Radial Standing Wave</option>
+          <option value="toroidal">Toroidal Resonance</option>
           <option value="galaxy">Galaxy</option>
           <option value="vortex">Vortex</option>
           <option value="wave">Wave Field</option>
@@ -425,6 +428,7 @@ button.btn.recording {
         <button class="btn primary" id="btnNextFreq">Next Frequency</button>
         <button class="btn" id="btnBloom">Random Bloom</button>
         <button class="btn" id="btnCapture">Capture</button>
+        <button class="btn" id="btnShareLink">Share Link</button>
       </div>
       <div class="ctrl">
         <div class="ctrl-label"><span>Base Frequency</span><strong id="vFreq">110 Hz</strong></div>
@@ -765,7 +769,8 @@ const ui = {
   btnPause: $('btnPause'), btnReset: $('btnReset'), btnAudio: $('btnAudio'),
   btnFullscreen: $('btnFullscreen'), btnRecord: $('btnRecord'),
   btnNextFreq: $('btnNextFreq'),
-  btnBloom: $('btnBloom'), btnCapture: $('btnCapture'), btnCamera: $('btnCamera'),
+  btnBloom: $('btnBloom'), btnCapture: $('btnCapture'), btnShareLink: $('btnShareLink'),
+  btnCamera: $('btnCamera'),
   btnTheme: $('btnTheme'),
   selPreset: $('selPreset'), selWaveform: $('selWaveform'),
   sCount: $('sCount'), sSpeed: $('sSpeed'), sSize: $('sSize'),
@@ -882,8 +887,19 @@ function initParticles() {
     } else if (P.preset === 'orbitals') {
       pvx[i] = -Math.sin(a * 2) * (0.25 + r() * 0.35);
       pvy[i] = Math.cos(a * 3) * (0.25 + r() * 0.35);
-    } else if (P.preset === 'cymatics') {
+    } else if (P.preset === 'cymatics' || P.preset === 'chladni') {
       pvx[i] = (r() - 0.5) * 0.05; pvy[i] = (r() - 0.5) * 0.05;
+    } else if (P.preset === 'radial') {
+      // Start in a ring pattern
+      pvx[i] = (r() - 0.5) * 0.03; pvy[i] = (r() - 0.5) * 0.03;
+    } else if (P.preset === 'toroidal') {
+      // Start particles near a torus ring shape
+      const torusR = baseR * 0.6;
+      const spread = baseR * 0.3;
+      const ringR = torusR + (r() - 0.5) * spread;
+      px[i] = cx + Math.cos(a) * ringR;
+      py[i] = cy + Math.sin(a) * ringR;
+      pvx[i] = -Math.sin(a) * 0.1; pvy[i] = Math.cos(a) * 0.1;
     } else {
       pvx[i] = (r() - 0.5) * 0.6; pvy[i] = (r() - 0.5) * 0.6;
     }
@@ -1425,6 +1441,45 @@ function applyGesture() {
 }
 
 // ── Physics ──
+// ═══════════════════════════════════════════════
+// CURL NOISE — organic rotational flow field
+// ═══════════════════════════════════════════════
+
+function noise2D(x, y) {
+  // Simple gradient noise approximation using sin/cos lattice
+  const a = Math.sin(x * 1.17 + y * 5.31) * 43758.5453;
+  return (a - Math.floor(a)) * 2 - 1;
+}
+
+function curlNoise(x, y, t, scale, strength) {
+  const eps = 0.5;
+  const sx = x * scale, sy = y * scale;
+  // Partial derivatives via central differencing
+  const dndy = (noise2D(sx, sy + eps + t * 0.3) - noise2D(sx, sy - eps + t * 0.3)) / (2 * eps);
+  const dndx = (noise2D(sx + eps, sy + t * 0.2) - noise2D(sx - eps, sy + t * 0.2)) / (2 * eps);
+  // Curl: rotate 90 degrees
+  return { cx: dndy * strength, cy: -dndx * strength };
+}
+
+// ═══════════════════════════════════════════════
+// PHYSICS FORCE FUNCTIONS
+// ═══════════════════════════════════════════════
+
+// Shared pointer force calculation
+function pointerForce(i, forceScale, burstScale) {
+  if (!pointer.active) return { px: 0, py: 0 };
+  const ppx = pointer.x - px[i], ppy = pointer.y - py[i];
+  const pr2 = ppx * ppx + ppy * ppy + 100;
+  const pf = P.force * (pointer.source === 'hand' ? P.gForce : 1) * forceScale / pr2;
+  let ax = ppx * pf * pointer.mode;
+  let ay = ppy * pf * pointer.mode;
+  if (pointer.burst > 0.01) {
+    ax -= ppx * pf * pointer.burst * burstScale;
+    ay -= ppy * pf * pointer.burst * burstScale;
+  }
+  return { px: ax, py: ay };
+}
+
 function cymaticsForce(i, t, cx, cy) {
   const dx = px[i] - cx, dy = py[i] - cy;
   const nx = dx / Math.max(1, W * 0.5), ny = dy / Math.max(1, H * 0.5);
@@ -1445,14 +1500,138 @@ function cymaticsForce(i, t, cx, cy) {
   ax += -nx * nb * P.field * 0.42;
   ay += -ny * nb * P.field * 0.42;
 
-  if (pointer.active) {
-    const ppx = pointer.x - px[i], ppy = pointer.y - py[i];
-    const pr2 = ppx * ppx + ppy * ppy + 120;
-    const pf = P.force * P.gForce * 160 / pr2;
-    ax += ppx * pf * pointer.mode;
-    ay += ppy * pf * pointer.mode;
-    if (pointer.burst > 0.01) { ax -= ppx * pf * pointer.burst * 2.4; ay -= ppy * pf * pointer.burst * 2.4; }
-  }
+  // Curl noise flow between nodal regions
+  const curl = curlNoise(nx, ny, t, 2.5, 0.15 * P.field * (1 - nb));
+  ax += curl.cx; ay += curl.cy;
+
+  const pt = pointerForce(i, 160, 2.4);
+  ax += pt.px; ay += pt.py;
+
+  return { ax, ay, node: nb };
+}
+
+// ── Chladni Plate — real eigenmode equation: sin(nπx)sin(mπy) ──
+function chladniForce(i, t, cx, cy) {
+  const dx = px[i] - cx, dy = py[i] - cy;
+  const nx = dx / Math.max(1, W * 0.5), ny = dy / Math.max(1, H * 0.5);
+
+  // Mode numbers derived from frequency
+  const n = Math.max(1, Math.round(P.freq / 110));
+  const m = Math.max(1, Math.round(P.freq * P.ratio / 110));
+  const mod = 1 + P.modDepth * 0.3 * Math.sin(TAU * P.modRate * t);
+
+  // Chladni equation: cos(nπx)sin(mπy) ± sin(nπx)cos(mπy)
+  const plate1 = Math.cos(n * Math.PI * nx * P.scale * mod) * Math.sin(m * Math.PI * ny * P.scale * mod);
+  const plate2 = Math.sin(n * Math.PI * nx * P.scale) * Math.cos(m * Math.PI * ny * P.scale);
+  const chladni = plate1 + plate2 * 0.8;
+
+  const node = 1 - Math.min(1, Math.abs(chladni));
+  const nb = Math.pow(clamp(node, 0, 1), P.sharp);
+
+  // Gradient forces — push particles toward nodal lines
+  const eps = 0.005;
+  const cx1 = Math.cos(n * Math.PI * (nx + eps) * P.scale * mod) * Math.sin(m * Math.PI * ny * P.scale * mod)
+            + Math.sin(n * Math.PI * (nx + eps) * P.scale) * Math.cos(m * Math.PI * ny * P.scale) * 0.8;
+  const cy1 = Math.cos(n * Math.PI * nx * P.scale * mod) * Math.sin(m * Math.PI * (ny + eps) * P.scale * mod)
+            + Math.sin(n * Math.PI * nx * P.scale) * Math.cos(m * Math.PI * (ny + eps) * P.scale) * 0.8;
+
+  const gx = (Math.abs(cx1) - Math.abs(chladni)) / eps;
+  const gy = (Math.abs(cy1) - Math.abs(chladni)) / eps;
+
+  let ax = -gx * P.field * 0.08;
+  let ay = -gy * P.field * 0.08;
+  ax += -nx * nb * P.field * 0.3;
+  ay += -ny * nb * P.field * 0.3;
+
+  // Gentle curl noise in non-nodal regions
+  const curl = curlNoise(nx, ny, t, 3.0, 0.1 * P.field * (1 - nb));
+  ax += curl.cx; ay += curl.cy;
+
+  const pt = pointerForce(i, 160, 2.4);
+  ax += pt.px; ay += pt.py;
+
+  return { ax, ay, node: nb };
+}
+
+// ── Radial Standing Wave — sin(r · freq - time) ──
+function radialForce(i, t, cx, cy) {
+  const dx = px[i] - cx, dy = py[i] - cy;
+  const r = Math.sqrt(dx * dx + dy * dy) + 1e-4;
+  const nx = dx / r, ny = dy / r;
+  const rNorm = r / (Math.min(W, H) * 0.5);
+
+  const k = P.freq * 0.02 * P.scale;
+  const mod = 1 + P.modDepth * Math.sin(TAU * P.modRate * t + pseed[i] * 0.003);
+
+  // Radial standing wave
+  const wave = Math.sin(rNorm * k * TAU * mod - t * 1.5 + pseed[i] * 0.0005);
+  // Angular harmonic
+  const ang = Math.atan2(dy, dx);
+  const angWave = Math.sin(ang * Math.round(P.ratio * 3) + t * 0.4);
+
+  const combined = wave * 0.7 + wave * angWave * 0.3;
+  const node = 1 - Math.min(1, Math.abs(combined));
+  const nb = Math.pow(clamp(node, 0, 1), P.sharp);
+
+  // Radial force — push toward nodal rings
+  const dwave = Math.cos(rNorm * k * TAU * mod - t * 1.5 + pseed[i] * 0.0005) * k * TAU;
+  let ax = -nx * dwave * P.field * 0.003;
+  let ay = -ny * dwave * P.field * 0.003;
+  ax += -nx * nb * P.field * 0.25;
+  ay += -ny * nb * P.field * 0.25;
+
+  // Curl for organic flow between rings
+  const nxn = dx / Math.max(1, W * 0.5), nyn = dy / Math.max(1, H * 0.5);
+  const curl = curlNoise(nxn, nyn, t, 2.0, 0.12 * P.field * (1 - nb * 0.5));
+  ax += curl.cx; ay += curl.cy;
+
+  const pt = pointerForce(i, 150, 2.0);
+  ax += pt.px; ay += pt.py;
+
+  return { ax, ay, node: nb };
+}
+
+// ── Toroidal Resonance — sin(θ·k) · cos(φ·m) mapped to 2D ──
+function toroidalForce(i, t, cx, cy) {
+  const dx = px[i] - cx, dy = py[i] - cy;
+  const r = Math.sqrt(dx * dx + dy * dy) + 1e-4;
+  const theta = Math.atan2(dy, dx); // angular position
+  const rNorm = r / (Math.min(W, H) * 0.4);
+
+  const k = Math.max(1, Math.round(P.freq / 80));
+  const m = Math.max(1, Math.round(P.freq * P.ratio / 120));
+  const mod = 1 + P.modDepth * Math.sin(TAU * P.modRate * t);
+
+  // Toroidal resonance: angular modes × radial modes
+  const torusR = 0.6; // major radius of torus in normalized space
+  const dist = Math.abs(rNorm - torusR); // distance from torus ring
+  const phi = dist * P.scale * 8; // maps radial distance to "poloidal" angle
+
+  const angular = Math.sin(theta * k + t * 0.5 * mod);
+  const poloidal = Math.cos(phi * m - t * 0.7);
+  const torus = angular * poloidal;
+
+  const node = 1 - Math.min(1, Math.abs(torus));
+  const nb = Math.pow(clamp(node, 0, 1), P.sharp);
+
+  // Force toward the torus ring and along nodal lines
+  const nx = dx / r, ny = dy / r;
+  const torusPull = -(rNorm - torusR) * P.field * 0.8;
+  const tangent = (-ny * 0.15 + nx * angular * 0.08) * P.field;
+  const tangentY = (nx * 0.15 + ny * angular * 0.08) * P.field;
+
+  let ax = nx * torusPull + tangent;
+  let ay = ny * torusPull + tangentY;
+  ax += -nx * nb * P.field * 0.2;
+  ay += -ny * nb * P.field * 0.2;
+
+  // Curl flow along the torus
+  const nxn = dx / Math.max(1, W * 0.5), nyn = dy / Math.max(1, H * 0.5);
+  const curl = curlNoise(nxn, nyn, t, 1.8, 0.18 * P.field);
+  ax += curl.cx; ay += curl.cy;
+
+  const pt = pointerForce(i, 150, 2.0);
+  ax += pt.px; ay += pt.py;
 
   return { ax, ay, node: nb };
 }
@@ -1479,6 +1658,11 @@ function otherForce(i, t, cx, cy) {
     const wf = Math.sin(dx * 0.012 + t * 1.7 + pseed[i]) + Math.cos(dy * 0.01 - t * 1.2 + pseed[i]);
     ax = Math.cos(ang + wf) * 0.16; ay = Math.sin(ang - wf) * 0.16;
   }
+
+  // Add curl noise to ALL non-cymatics presets
+  const nxn = dx / Math.max(1, W * 0.5), nyn = dy / Math.max(1, H * 0.5);
+  const curl = curlNoise(nxn, nyn, t, 2.0, 0.1);
+  ax += curl.cx; ay += curl.cy;
 
   if (pointer.active) {
     const ppx = pointer.x - px[i], ppy = pointer.y - py[i];
@@ -1549,7 +1733,7 @@ function frame(now) {
   trailIdx++;
 
   // ── Physics ──
-  const isCym = P.preset === 'cymatics';
+  const isCymLike = P.preset === 'cymatics' || P.preset === 'chladni' || P.preset === 'radial' || P.preset === 'toroidal';
   const bloomGlow = 1 + bloomPhase * 0.6;
 
   // How much trail to show (0 = no trail, 1 = full trail)
@@ -1577,7 +1761,7 @@ function frame(now) {
         glSize[writeIdx] = trailSize;
         // Hue — same as main particle but slightly shifted
         let h;
-        if (isCym) {
+        if (isCymLike) {
           h = (theme.hueBase + bloomHue + P.freq * 0.08 + Math.sin(t + pseed[i] * 0.002) * 25) / 360;
           h += P.hueSpeed * t * 0.01;
         } else {
@@ -1591,7 +1775,12 @@ function frame(now) {
 
   // ── Current frame particles ──
   for (let i = 0; i < N; i++) {
-    const f = isCym ? cymaticsForce(i, t, cx, cy) : otherForce(i, t, cx, cy);
+    let f;
+    if (P.preset === 'cymatics') f = cymaticsForce(i, t, cx, cy);
+    else if (P.preset === 'chladni') f = chladniForce(i, t, cx, cy);
+    else if (P.preset === 'radial') f = radialForce(i, t, cx, cy);
+    else if (P.preset === 'toroidal') f = toroidalForce(i, t, cx, cy);
+    else f = otherForce(i, t, cx, cy);
     pvx[i] = (pvx[i] + f.ax * dt * 60) * P.drag;
     pvy[i] = (pvy[i] + f.ay * dt * 60) * P.drag;
     px[i] += pvx[i]; py[i] += pvy[i];
@@ -1604,7 +1793,7 @@ function frame(now) {
 
     // Hue
     let h;
-    if (isCym) {
+    if (isCymLike) {
       h = (theme.hueBase + bloomHue + P.freq * 0.08 + f.node * 120 + Math.sin(t + pseed[i] * 0.002) * 25) / 360;
       h += P.hueSpeed * t * 0.01;
     } else {
@@ -1614,7 +1803,7 @@ function frame(now) {
 
     // Alpha
     let a;
-    if (isCym) {
+    if (isCymLike) {
       a = 0.25 + f.node * 0.75;
     } else {
       a = 0.35 + 0.35 * (0.5 + 0.5 * Math.sin(plife[i] * 4 + pseed[i]));
@@ -1623,7 +1812,7 @@ function frame(now) {
 
     // Size
     let sz;
-    if (isCym) {
+    if (isCymLike) {
       sz = Math.max(0.8, P.size * (0.6 + f.node * 2.2) * bloomGlow);
     } else {
       sz = Math.max(0.8, P.size * (0.9 + 0.3 * Math.sin(plife[i] * 3)) * (1 + bloomPhase * 0.15));
@@ -1754,7 +1943,57 @@ function capturePattern() {
     scale: +ui.sScale.value, field: +ui.sField.value, sharp: +ui.sSharp.value,
     theme: THEMES[themeIdx].name
   };
-  ui.captureOut.textContent = btoa(JSON.stringify(snap));
+  const code = btoa(JSON.stringify(snap));
+  ui.captureOut.textContent = code;
+  return code;
+}
+
+function shareLink() {
+  const code = capturePattern();
+  const url = window.location.origin + window.location.pathname + '?p=' + encodeURIComponent(code);
+  // Copy to clipboard
+  navigator.clipboard.writeText(url).then(() => {
+    ui.captureOut.textContent = '✓ Link copied to clipboard!';
+    setTimeout(() => { ui.captureOut.textContent = url; }, 2000);
+  }).catch(() => {
+    // Fallback — just show the URL
+    ui.captureOut.textContent = url;
+  });
+}
+
+function loadPatternFromURL() {
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get('p');
+  if (!code) return false;
+
+  try {
+    const snap = JSON.parse(atob(decodeURIComponent(code)));
+
+    // Apply preset
+    if (snap.preset) { ui.selPreset.value = snap.preset; }
+    if (snap.waveform) { ui.selWaveform.value = snap.waveform; }
+    if (snap.freq != null) { ui.sFreq.value = String(snap.freq); if (ui.freqInput) ui.freqInput.value = Math.round(snap.freq); }
+    if (snap.ratio != null) { ui.sRatio.value = String(snap.ratio); }
+    if (snap.modRate != null) { ui.sModRate.value = String(snap.modRate); }
+    if (snap.modDepth != null) { ui.sModDepth.value = String(snap.modDepth); }
+    if (snap.scale != null) { ui.sScale.value = String(snap.scale); }
+    if (snap.field != null) { ui.sField.value = String(snap.field); }
+    if (snap.sharp != null) { ui.sSharp.value = String(snap.sharp); }
+
+    // Apply theme
+    if (snap.theme) {
+      const idx = THEMES.findIndex(t => t.name === snap.theme);
+      if (idx >= 0) themeIdx = idx;
+    }
+
+    P = readParams();
+    updateLabels();
+    triggerBloom(1.0);
+    return true;
+  } catch (e) {
+    console.warn('Failed to load pattern from URL:', e);
+    return false;
+  }
 }
 
 function clearScreen() {
@@ -1813,6 +2052,7 @@ ui.btnFullscreen.addEventListener('click', () => { interact(); toggleFS(); });
 ui.btnNextFreq.addEventListener('click', () => { interact(); nextFreqPreset(); });
 ui.btnBloom.addEventListener('click', () => { interact(); randomBloom(); });
 ui.btnCapture.addEventListener('click', () => { interact(); capturePattern(); });
+ui.btnShareLink.addEventListener('click', () => { interact(); shareLink(); });
 ui.btnCamera.addEventListener('click', () => { interact(); toggleCamera(); });
 ui.btnTheme.addEventListener('click', () => { interact(); cycleTheme(); });
 
@@ -1876,8 +2116,15 @@ function adaptiveCount() {
 const startCount = adaptiveCount();
 ui.sCount.value = String(startCount);
 
+// Load pattern from URL if present (before first resize/init)
+const loadedFromURL = loadPatternFromURL();
+
 resize();
 allocGLBuffers();
+if (loadedFromURL) {
+  clearScreen();
+  initParticles();
+}
 requestAnimationFrame(frame);
 
 </script>
