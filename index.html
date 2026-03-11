@@ -428,7 +428,17 @@ button.btn.recording {
       </div>
       <div class="ctrl">
         <div class="ctrl-label"><span>Base Frequency</span><strong id="vFreq">110 Hz</strong></div>
-        <input type="range" id="sFreq" min="20" max="2000" step="1" value="110"/>
+        <input type="range" id="sFreq" min="20" max="2000" step="0.1" value="110"/>
+        <div style="display:flex;gap:6px;align-items:center;margin-top:5px;">
+          <input type="number" id="freqInput" min="20" max="2000" step="1" value="110" style="
+            width:80px;padding:5px 8px;border-radius:8px;
+            border:1px solid rgba(255,255,255,0.08);
+            background:rgba(255,255,255,0.04);color:var(--accent);
+            font-family:var(--font-mono);font-size:0.78rem;
+            text-align:center;outline:none;
+          "/>
+          <span style="font-size:0.68rem;color:var(--muted);font-family:var(--font-mono);">Hz · type exact value</span>
+        </div>
       </div>
       <div class="ctrl">
         <div class="ctrl-label"><span>Harmonic Ratio</span><strong id="vRatio">1.50×</strong></div>
@@ -760,7 +770,7 @@ const ui = {
   selPreset: $('selPreset'), selWaveform: $('selWaveform'),
   sCount: $('sCount'), sSpeed: $('sSpeed'), sSize: $('sSize'),
   sDrag: $('sDrag'), sForce: $('sForce'), sTrail: $('sTrail'),
-  sFreq: $('sFreq'), sRatio: $('sRatio'), sModRate: $('sModRate'),
+  sFreq: $('sFreq'), freqInput: $('freqInput'), sRatio: $('sRatio'), sModRate: $('sModRate'),
   sModDepth: $('sModDepth'), sScale: $('sScale'), sField: $('sField'),
   sSharp: $('sSharp'), sGForce: $('sGForce'), sGFreq: $('sGFreq'),
   sPinch: $('sPinch'), chkGlow: $('chkGlow'), chkBloom: $('chkBloom'),
@@ -1682,7 +1692,8 @@ function updateLabels() {
   ui.vForce.textContent = (+ui.sForce.value).toFixed(2);
   const trailVal = +ui.sTrail.value;
   ui.vTrail.textContent = trailVal < 0.05 ? 'Off' : trailVal < 0.3 ? 'Short' : trailVal < 0.6 ? 'Medium' : trailVal < 0.85 ? 'Long' : 'Very long';
-  ui.vFreq.textContent = Math.round(+ui.sFreq.value) + ' Hz';
+  ui.vFreq.textContent = (+ui.sFreq.value).toFixed(1) + ' Hz';
+  ui.freqInput.value = Math.round(+ui.sFreq.value);
   ui.vRatio.textContent = (+ui.sRatio.value).toFixed(2) + '×';
   ui.vModRate.textContent = (+ui.sModRate.value).toFixed(2) + ' Hz';
   ui.vModDepth.textContent = (+ui.sModDepth.value).toFixed(2);
@@ -1814,6 +1825,16 @@ ui.selPreset.addEventListener('change', () => { interact(); clearScreen(); initP
 ui.selWaveform.addEventListener('change', () => { interact(); if (audioOn) updateAudio(false); });
 ui.chkGlow.addEventListener('change', () => interact());
 ui.chkBloom.addEventListener('change', () => interact());
+
+// Numeric frequency input — syncs to slider
+ui.freqInput.addEventListener('input', () => {
+  interact();
+  let val = clamp(+ui.freqInput.value, 20, 2000);
+  ui.sFreq.value = String(val);
+  P = readParams();
+  updateLabels();
+  if (audioOn) updateAudio(false);
+});
 
 // ── Pointer Events ──
 window.addEventListener('mousemove', e => {
